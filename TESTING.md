@@ -1,4 +1,4 @@
-# Testing — what was tested, what wasn't
+# Testing
 
 All tests on one retail Nintendo Switch 2, firmware 23.0.1, kaiHEN + hbmenu (ounce-hbloader), Kodi launched from the
 hbmenu file list, handheld mode, console on an isolated offline Wi-Fi. Input via a scripted controller, screen via a
@@ -9,7 +9,7 @@ test was run on **two separate launches** unless noted.
 
 | Rev | Result |
 |---|---|
-| 3 | Splash, GLES 3.2 (zink/NVK), 1080p GUI, audio sink, add-on scan OK — first database fails (“malformed”) |
+| 3 | Splash, GLES 3.2 (zink/NVK), 1080p GUI, audio sink, add-on scan OK. First database fails ("malformed") |
 | 4b | Probe: `read()` past EOF → EIO on this filesystem → sqlite reports corruption |
 | 5 | Read fix works; first sqlite write → `IOERR_FSTAT` |
 | 7 | `stat()` on a file open for writing → EIO; a 2nd `open()` of it → EIO; sqlite alone now works |

@@ -1,4 +1,4 @@
-# Kodi for Switch 2 — roadmap / next tasks
+# Roadmap
 
 State on 2026-11-21: **rev 12** (`out/switch/kodi.nro` built from `patches/kodi-21.3-switch2.patch`) boots to the
 Estuary home screen, takes pad input, plays local and HTTP-streamed media in real time up to 2160p, seeks, and
@@ -13,7 +13,7 @@ closes cleanly. Evidence and test details: [TESTING.md](TESTING.md).
 3. **4K HDR10 at full speed**: stop the per-clip `BaseYUV2RGBGLSLShader - unsupported format YV12 10bit` →
    shader rebuild loop (~6 rebuilds per HDR clip; 2160p HEVC10 runs ~10 % slow). Then measure frame drops
    (enable Kodi's player debug overlay / drop counters).
-4. **Hardware video decode** (NVDEC on the Switch 2 GPU via nvdrv) — today everything is FFmpeg software decode on
+4. **Hardware video decode** (NVDEC on the Switch 2 GPU via nvdrv). Today everything is FFmpeg software decode on
    the CPU; needed for high-bitrate 4K HEVC and battery life.
 5. **Docked / TV output**: resolution follows the dock (currently fixed at start, GUI clamped to 1080p); 4K GUI
    output, refresh-rate switching, HDR passthrough if the display path allows it.
@@ -37,4 +37,4 @@ closes cleanly. Evidence and test details: [TESTING.md](TESTING.md).
 - Subtitles (SRT / ASS / PGS), multiple audio tracks switching, chapters UI.
 - Music library, pictures, PVR, games/RetroPlayer.
 - 60 fps video, 4K remux (> 50 Mb/s), AV1, VC-1, MPEG-2, TrueHD/Atmos, DTS:X.
-- Running from the hbmenu NetLoader (nxlink) — all runs so far launched from the hbmenu file list.
+- Launching through the hbmenu NetLoader (nxlink). So far every run started from the hbmenu file list.

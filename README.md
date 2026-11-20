@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="docs/img/kodi-logo.png" width="160" alt="Kodi logo">
+  <img src="docs/img/kodi-logo.png" width="150" alt="Kodi logo">
 </p>
 
 <h1 align="center">Kodi for Nintendo Switch 2</h1>
 
 <p align="center">
-  <b>Kodi 21.3 “Omega” running natively on the Switch 2 — homebrew, via kaiHEN + hbmenu.</b><br>
-  <i>Early, experimental, but it plays a 31 Mb/s Blu-ray remux. Over Wi-Fi. While you scrub.</i>
+  Kodi 21.3 "Omega" built for the Switch 2 as a native homebrew app, launched from hbmenu under kaiHEN.
 </p>
 
 <p align="center">
@@ -22,120 +21,119 @@
   <img src="docs/img/home-screen.png" width="49%" alt="Kodi home screen on Switch 2">
 </p>
 
----
+## Status
 
-## What works (tested on real hardware)
+It boots, it's usable with a controller, and it plays real files. Everything below was checked on a retail Switch 2;
+the details are in [TESTING.md](TESTING.md).
 
-| | |
+| Area | State |
 |---|---|
-| 🏠 **Boots to the Estuary home screen** | ~25 s cold start from hbmenu, 1920×1080 GUI, OpenGL ES 3.2 (Mesa zink → NVK on the Switch 2 GPU) |
-| 🎮 **Controller** | D-pad / sticks navigate, A select, B back, X context, Y info, +/− menu/OSD, L/R page, ZL/ZR rew/ffwd, key auto-repeat |
-| 🎬 **Video playback** | FFmpeg software decode: H.264 and HEVC (8- and 10-bit) up to **2160p**, real time for SDR |
-| 🌈 **HDR10** | Plays; tone-mapped to SDR (Reinhard) — no HDR output yet |
-| 🔊 **Audio decode** | PCM, AC3 5.1, E-AC3 5.1, DTS 5.1, DTS-HD MA 5.1, AAC 7.1, FLAC — decoded and downmixed to stereo (console `audout`) |
-| 🌐 **Network streaming** | Plays from an HTTP source on the LAN, incl. a **31 Mb/s** H.264 remux; seeking / chapter jumps resume in < 2 s |
-| 💾 **Local files** | Plays from the SD card (`/switch/kodi-media/…`) |
-| ⏹️ **Clean exit** | HOME → Close shuts Kodi down cleanly, settings + databases saved |
+| Startup | Estuary home screen in about 25 s from hbmenu. 1920×1080 GUI on OpenGL ES 3.2 (Mesa zink over NVK). |
+| Input | Controller navigation with key repeat. A select, B back, X context menu, Y info, +/− menu and OSD, L/R page, ZL/ZR rewind and fast-forward. |
+| Video | FFmpeg software decoding. H.264 and HEVC, 8- and 10-bit, up to 2160p. SDR plays in real time. |
+| HDR10 | Plays, tone-mapped to SDR. No HDR output. |
+| Audio | PCM, AC3, E-AC3, DTS, DTS-HD MA, AAC (up to 7.1) and FLAC are decoded and mixed down to stereo. |
+| Network | HTTP sources on the LAN work, including a 31 Mb/s Blu-ray remux. Seeks and chapter jumps resume in under 2 s. |
+| Local files | Plays from the SD card. |
+| Exit | HOME → Close shuts Kodi down cleanly and saves settings and databases. |
 
 <p align="center">
   <img src="docs/img/files-view.png" width="49%" alt="Kodi file browser">
-  <img src="docs/img/playback-720p.png" width="49%" alt="test pattern playback">
+  <img src="docs/img/playback-720p.png" width="49%" alt="Test pattern playback">
 </p>
 
-Full results, method and logs: **[TESTING.md](TESTING.md)**.
+## Limitations
 
-## ⚠️ Limitations (read these)
+This is an early port, tested on a single console.
 
-- **Experimental.** Built and tested on one console. Expect rough edges.
-- **No Python add-ons.** Python isn't built yet, so the usual scraper/streaming plugins (YouTube etc.) do not work.
-  No binary add-ons either (the platform has no `dlopen`).
-- **Software decoding only.** No NVDEC hardware decoding yet → 4K HEVC 10-bit HDR runs ~10 % slower than real time.
-- **Stereo out only.** 5.1/7.1 is decoded and downmixed; no passthrough, no multichannel HDMI.
-- **No HDR output.** HDR10 is tone-mapped to SDR.
-- **Docked / TV mode untested.** The GUI is fixed at 1920×1080.
-- **Off by default / not built:** SMB, NFS, UPnP, AirPlay, web server, JSON-RPC remote, event server, add-on repository
-  auto-update (the test console is kept offline). Sources over **HTTP** work.
-- **Audio has not been verified by ear** (the test rig captures video only) — the sink opens, consumes and closes with
-  no errors.
-- Touch input, subtitles, music library, Pictures, PVR and Games are untested.
+- No Python add-ons yet, so the usual scraper and streaming plugins don't work. Binary add-ons aren't supported
+  either, because the platform has no `dlopen`.
+- Decoding is software only. 4K HEVC 10-bit HDR runs about 10% slower than real time.
+- Audio output is stereo. Surround tracks are decoded and mixed down; there's no passthrough.
+- No HDR output. HDR10 is tone-mapped.
+- Docked mode hasn't been tested, and the GUI is fixed at 1920×1080.
+- SMB, NFS, UPnP, AirPlay, the web server, the JSON-RPC remote and automatic add-on updates are off or not built.
+  HTTP sources work.
+- Audio hasn't been checked by ear yet. The rig captures video only; the audio sink runs without errors.
+- Touch, subtitles, the music library, Pictures, PVR and Games are untested.
 
 ## Install
 
-Requirements: a Switch 2 running **kaiHEN** with **hbmenu**.
+You need a Switch 2 running kaiHEN with hbmenu.
 
-1. Build (below) or grab `kodi.nro` + the `kodi/` data folder from a release.
-2. Copy to the SD card:
+1. Download the zip from [Releases](https://github.com/ignotusbucius/kodi-ns2/releases), or build it yourself (below).
+2. Unzip it onto the SD card so you end up with:
    ```
    sdmc:/switch/kodi.nro
-   sdmc:/switch/kodi/          ← addons/, media/, system/, userdata/
+   sdmc:/switch/kodi/        addons/, media/, system/, userdata/
    ```
-3. Launch **Kodi** from hbmenu (file list). User data lives in `sdmc:/switch/kodi/.kodi/`, the log in
-   `sdmc:/switch/kodi/.kodi/temp/kodi.log`.
-4. Add a source: *Videos → Files → Add videos…*, or drop a `sources.xml` into `sdmc:/switch/kodi/.kodi/userdata/`.
+3. Start *Kodi* from hbmenu.
+4. Add a source under *Videos → Files → Add videos…*, or put a `sources.xml` in `sdmc:/switch/kodi/.kodi/userdata/`.
 
-> Kodi writes only under `sdmc:/switch/kodi/`. The build links no NAND / save-data / system-settings services
-> (checked on every build with `nm`).
+Kodi keeps its data in `sdmc:/switch/kodi/.kodi/` and its log in `sdmc:/switch/kodi/.kodi/temp/kodi.log`. It only
+writes under `sdmc:/switch/kodi/`, and every build is checked to make sure it links no NAND, save-data or
+system-settings calls.
 
 ## Build
 
-Linux host with Podman (or Docker). Uses the [ounce-devkit](https://github.com/ouncebrew/ounce-devkit) image
-(devkitPro + libounce + OunceVK).
+You need a Linux host with Podman or Docker. The build uses the
+[ounce-devkit](https://github.com/ouncebrew/ounce-devkit) image (devkitPro, libounce and OunceVK).
 
 ```bash
-# 1. devkit image (once)
+# devkit image, once
 git clone https://github.com/ouncebrew/ounce-devkit && podman build -t ounce-devkit ounce-devkit
 podman build -t kodi-switch2-devkit -f Containerfile .
 
-# 2. Kodi 21.3 + this port
-./bootstrap.sh            # clones xbmc/xbmc @ 21.3-Omega into ./xbmc and applies patches/kodi-21.3-switch2.patch
+# Kodi 21.3 plus this port
+./bootstrap.sh       # clones xbmc/xbmc at 21.3-Omega into ./xbmc and applies the patch
 
-# 3. everything else
-./build.sh all            # hosttools → deps → configure → build → nro
-ls out/switch/            # kodi.nro + kodi/
+# build everything
+./build.sh all       # hosttools, deps, configure, build, nro
+ls out/switch/       # kodi.nro and kodi/
 ```
 
-`./build.sh {hosttools|deps|configure|build|nro}` runs single stages. Deps (libiconv, OpenSSL 3.0, sqlite3,
-TinyXML, libcdio, FFmpeg 6.0.1, fstrcmp, a tiny libuuid) are cross-built statically into `prefix/`.
+Stages can be run one at a time with `./build.sh hosttools|deps|configure|build|nro`. The libraries the devkit
+lacks (libiconv, OpenSSL 3.0, SQLite, TinyXML, libcdio, FFmpeg 6.0.1, fstrcmp and a small libuuid) are built
+statically into `prefix/`.
 
 ## How the port works
 
-A new `switch2` platform for Kodi's CMake build (`cmake/scripts/switch2`, `xbmc/platform/switch2`,
-`xbmc/windowing/switch2`, `AESinkSwitch2`) plus a set of small shims for the places where the console's
-newlib/libounce runtime differs from Linux. Every one of these was **found on hardware** and fixed:
+The port adds a `switch2` platform to Kodi's build: CMake platform files, `xbmc/platform/switch2`, an EGL/GLES
+window system on the default NWindow, and an `audout` audio sink. The rest is a handful of small shims for places
+where the console's newlib/libounce runtime behaves differently from Linux. Each of these turned up on hardware:
 
-| Console behaviour | What broke | Fix |
+| On the Switch 2 | Effect on Kodi | Fix |
 |---|---|---|
-| `read()` past end-of-file returns **EIO** (POSIX: 0) | sqlite: every new DB “malformed” | `_read_r` wrapper: clamp to file size, EOF → 0 |
-| `stat()` of a file open for writing returns **EIO** (fsdev reopens by path) | sqlite `IOERR_FSTAT` | global `stat`/`lstat` fallback via `fsFsGetEntryType` + own fd |
-| a **second `open()`** of a file open for writing fails | Kodi's 2nd DB connection | sqlite shared-cache mode; file cache in RAM |
-| no POSIX advisory locks | sqlite lock errors | `unix-dotfile` VFS |
-| `pthread_detach()` is an **ENOSYS stub** | `std::thread::detach` throws → terminate | wrapper hands threads to a reaper that joins them |
-| default thread stack **128 KiB** | deep-stack risk | `pthread_create` wrapper: 1 MiB |
-| `CLOCK_MONOTONIC_RAW` unsupported (timespec left unwritten) | garbage media clock, 30 s clip in 3 s | `CLOCK_MONOTONIC` + `clock_gettime` id mapping |
-| no `dlopen`, no `/proc`, no `sysinfo`/`uname`/`mmap`… | link/compile errors | stubs + compat headers |
+| `read()` past end-of-file returns EIO instead of 0 | SQLite saw every new database as corrupt | Read wrapper clamps to the file size |
+| `stat()` on a file open for writing returns EIO | SQLite `IOERR_FSTAT` | `stat`/`lstat` fall back to the entry type and our own fd |
+| A second `open()` of a file open for writing fails | Kodi's second database connection failed | SQLite shared cache; file cache kept in RAM |
+| No POSIX advisory locks | SQLite lock errors | `unix-dotfile` VFS |
+| `pthread_detach()` always fails | `std::thread::detach` threw and Kodi aborted | Detached threads are handed to a reaper that joins them |
+| Default thread stack is 128 KiB | Risk of overflow in deep call chains | 1 MiB default stack |
+| `CLOCK_MONOTONIC_RAW` isn't supported | Garbage media clock; a 30 s clip finished in 3 s | Use `CLOCK_MONOTONIC` and map the other clock IDs |
+| No `dlopen`, `/proc`, `sysinfo`, `uname` or `mmap` | Build and link errors | Stubs and compatibility headers |
 
-Plus: an in-process crash handler that writes registers, module base and a backtrace to
+There's also a small crash handler that writes the registers, module base and a backtrace to
 `sdmc:/switch/kodi/crash.txt`.
 
-## Roadmap / next steps
+## Roadmap
 
-1. Second-run replicate of the real-media test; audio check by ear (downmix channel mapping).
-2. 4K HDR10 at full speed (fix the 10-bit shader rebuild loop) + frame-drop measurement.
-3. **NVDEC hardware decoding**.
-4. Docked/TV output: follow dock resolution, 4K GUI, refresh-rate switching, HDR.
-5. Multichannel audio / passthrough.
-6. SMB/NFS/UPnP, JSON-RPC remote.
-7. **Python add-ons** (cross-build CPython for libounce).
-8. Long-session stability, sleep/resume, memory.
-9. Release zips.
+1. Repeat the network playback test on a fresh launch, and check the audio by ear.
+2. Get 4K HDR10 to full speed by fixing the 10-bit shader rebuilds, and measure dropped frames.
+3. Hardware decoding through NVDEC.
+4. Docked and TV output: follow the dock's resolution, 4K GUI, refresh-rate switching, HDR.
+5. Surround audio and passthrough.
+6. SMB, NFS, UPnP and the JSON-RPC remote.
+7. Python add-ons, by cross-building CPython for libounce.
+8. Long sessions, sleep and resume, memory use.
 
-See [ROADMAP.md](ROADMAP.md).
+More detail in [ROADMAP.md](ROADMAP.md).
 
-## Credits & license
+## Credits and license
 
-- **[Kodi](https://kodi.tv)** © Team Kodi — GPL-2.0-or-later. Kodi® and the Kodi logo are trademarks of the XBMC
-  Foundation; this is an **unofficial** port and is not endorsed by Team Kodi or the XBMC Foundation.
-- Switch 2 port: [@ignotusbucius](https://github.com/ignotusbucius). Port patches are GPL-2.0-or-later, as Kodi.
-- [ouncebrew](https://github.com/ouncebrew): kaiHEN, libounce, OunceVK, ounce-devkit. devkitPro / libnx.
-- FFmpeg, OpenSSL, SQLite, libiconv, libcdio, TinyXML, fstrcmp, Mesa — under their own licenses.
-- Not affiliated with Nintendo. Use on hardware you own.
+- [Kodi](https://kodi.tv) is © Team Kodi and licensed GPL-2.0-or-later. Kodi® and the Kodi logo are trademarks of
+  the XBMC Foundation. This is an unofficial port, not endorsed by Team Kodi or the XBMC Foundation.
+- Switch 2 port by [@ignotusbucius](https://github.com/ignotusbucius), under the same license as Kodi.
+- kaiHEN, libounce, OunceVK and ounce-devkit by [ouncebrew](https://github.com/ouncebrew); devkitPro and libnx.
+- FFmpeg, OpenSSL, SQLite, libiconv, libcdio, TinyXML, fstrcmp and Mesa are under their own licenses.
+- Not affiliated with Nintendo. Use it on hardware you own.
