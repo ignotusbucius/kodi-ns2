@@ -1,0 +1,12 @@
+--- a/configure	2026-11-20 19:04:57.870259151 +0200
++++ b/configure	2026-11-20 19:04:57.884641269 +0200
+@@ -5732,6 +5732,9 @@
+     minix)
+         ;;
+     none)
++        # Switch 2 (libounce) links PIE with -z text: relocated asm constants
++        # must go to .data.rel.ro, as on linux/android.
++        enable section_data_rel_ro
+         ;;
+     *)
+         die "Unknown OS '$target_os'."

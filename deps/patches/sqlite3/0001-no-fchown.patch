@@ -1,0 +1,12 @@
+--- a/sqlite3.c	2026-11-20 18:58:54.024384957 +0200
++++ b/sqlite3.c	2026-11-20 18:58:54.055385654 +0200
+@@ -171,7 +171,9 @@
+ #else
+ /* This is not VxWorks. */
+ #define OS_VXWORKS 0
++#if !defined(__SWITCH__) /* Horizon: newlib/libounce have no fchown or geteuid */
+ #define HAVE_FCHOWN 1
++#endif
+ #define HAVE_READLINK 1
+ #define HAVE_LSTAT 1
+ #endif /* defined(_WRS_KERNEL) */

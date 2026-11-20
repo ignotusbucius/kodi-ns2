@@ -1,0 +1,10 @@
+xbmc/
+build/
+out/
+prefix/
+hosttools/
+deps/src/
+deps/src-extra/
+deps/build/
+testmedia/matrix/
+*.log

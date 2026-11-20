@@ -1,0 +1,3659 @@
+diff --git a/cmake/modules/FindCurl.cmake b/cmake/modules/FindCurl.cmake
+index 6411a92..39eac58 100644
+--- a/cmake/modules/FindCurl.cmake
++++ b/cmake/modules/FindCurl.cmake
+@@ -45,7 +45,10 @@ find_package_handle_standard_args(Curl
+ 
+ if(CURL_FOUND)
+   set(CURL_INCLUDE_DIRS ${CURL_INCLUDE_DIR})
+-  set(CURL_LIBRARIES ${CURL_LIBRARY} ${NGHTTP2_LIBRARY})
++  set(CURL_LIBRARIES ${CURL_LIBRARY})
++  if(NGHTTP2_LIBRARY)
++    list(APPEND CURL_LIBRARIES ${NGHTTP2_LIBRARY})
++  endif()
+ 
+   if(NOT TARGET Curl::Curl)
+     add_library(Curl::Curl ${CURL_LIB_TYPE} IMPORTED)
+diff --git a/cmake/modules/FindFmt.cmake b/cmake/modules/FindFmt.cmake
+index 6a3f36e..eb7f5bb 100644
+--- a/cmake/modules/FindFmt.cmake
++++ b/cmake/modules/FindFmt.cmake
+@@ -25,11 +25,17 @@ if(NOT TARGET fmt::fmt)
+       generate_patchcommand("${patches}")
+     endif()
+ 
++    if(CORE_SYSTEM_NAME STREQUAL switch2)
++      set(_FMT_OS OFF)
++    else()
++      set(_FMT_OS ON)
++    endif()
+     set(CMAKE_ARGS -DCMAKE_CXX_EXTENSIONS=${CMAKE_CXX_EXTENSIONS}
+                    -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
+                    -DFMT_DOC=OFF
+                    -DFMT_TEST=OFF
+                    -DFMT_INSTALL=ON
++                   -DFMT_OS=${_FMT_OS}
+                    "${EXTRA_ARGS}")
+ 
+     BUILD_DEP_TARGET()
+diff --git a/cmake/modules/FindLibDvdNav.cmake b/cmake/modules/FindLibDvdNav.cmake
+index ffd8d9d..ae7ac9c 100644
+--- a/cmake/modules/FindLibDvdNav.cmake
++++ b/cmake/modules/FindLibDvdNav.cmake
+@@ -53,6 +53,9 @@ if(NOT TARGET LibDvdNav::LibDvdNav)
+   endif()
+ 
+   string(APPEND LIBDVDNAV_CFLAGS "-D_XBMC")
++  if(CORE_SYSTEM_NAME STREQUAL switch2)
++    string(APPEND LIBDVDNAV_CFLAGS " -include ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/dlfcn.h")
++  endif()
+ 
+   if(APPLE)
+     set(LIBDVDNAV_LDFLAGS "-framework CoreFoundation")
+diff --git a/cmake/modules/FindLibDvdRead.cmake b/cmake/modules/FindLibDvdRead.cmake
+index b67ff90..50f0405 100644
+--- a/cmake/modules/FindLibDvdRead.cmake
++++ b/cmake/modules/FindLibDvdRead.cmake
+@@ -55,6 +55,9 @@ if(NOT TARGET LibDvdRead::LibDvdRead)
+   endif()
+ 
+   string(APPEND LIBDVDREAD_CFLAGS "-D_XBMC")
++  if(CORE_SYSTEM_NAME STREQUAL switch2)
++    string(APPEND LIBDVDREAD_CFLAGS " -include ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/dlfcn.h -include ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/dvdread_bswap.h")
++  endif()
+ 
+   if(APPLE)
+     set(LIBDVDREAD_LDFLAGS "-framework CoreFoundation")
+diff --git a/cmake/modules/FindPCRE.cmake b/cmake/modules/FindPCRE.cmake
+index 811aa3f..e534132 100644
+--- a/cmake/modules/FindPCRE.cmake
++++ b/cmake/modules/FindPCRE.cmake
+@@ -24,11 +24,16 @@ macro(buildPCRE)
+ 
+   generate_patchcommand("${patches}")
+ 
++  if(CORE_SYSTEM_NAME STREQUAL switch2)
++    set(PCRE_JIT OFF)
++  else()
++    set(PCRE_JIT ON)
++  endif()
+   set(CMAKE_ARGS -DPCRE_NEWLINE=ANYCRLF
+                  -DPCRE_NO_RECURSE=ON
+                  -DPCRE_MATCH_LIMIT_RECURSION=1500
+-                 -DPCRE_SUPPORT_JIT=ON
+-                 -DPCRE_SUPPORT_PCREGREP_JIT=ON
++                 -DPCRE_SUPPORT_JIT=${PCRE_JIT}
++                 -DPCRE_SUPPORT_PCREGREP_JIT=${PCRE_JIT}
+                  -DPCRE_SUPPORT_UTF=ON
+                  -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON
+                  -DPCRE_SUPPORT_LIBZ=OFF
+diff --git a/cmake/modules/FindTinyXML2.cmake b/cmake/modules/FindTinyXML2.cmake
+index a75c370..ad981b8 100644
+--- a/cmake/modules/FindTinyXML2.cmake
++++ b/cmake/modules/FindTinyXML2.cmake
+@@ -13,7 +13,7 @@ macro(buildTinyXML2)
+ 
+   find_package(Patch MODULE REQUIRED)
+ 
+-  if(UNIX)
++  if(UNIX OR CORE_SYSTEM_NAME STREQUAL switch2)
+     # ancient patch (Apple/freebsd) fails to patch tinyxml2 CMakeLists.txt file due to it being crlf encoded
+     # Strip crlf before applying patches.
+     # Freebsd fails even harder and requires both .patch and CMakeLists.txt to be crlf stripped
+diff --git a/cmake/platform/switch2/switch2.cmake b/cmake/platform/switch2/switch2.cmake
+new file mode 100644
+index 0000000..cd08eec
+--- /dev/null
++++ b/cmake/platform/switch2/switch2.cmake
+@@ -0,0 +1,4 @@
++# Switch 2: one window (the default NWindow), GLES 3 through OunceVK's EGL.
++set(PLATFORM_REQUIRED_DEPS OpenGLES EGL)
++set(APP_RENDER_SYSTEM gles)
++set(PLATFORM_GLOBAL_TARGET_DEPS "")
+diff --git a/cmake/scripts/switch2/ArchSetup.cmake b/cmake/scripts/switch2/ArchSetup.cmake
+new file mode 100644
+index 0000000..1294d47
+--- /dev/null
++++ b/cmake/scripts/switch2/ArchSetup.cmake
+@@ -0,0 +1,40 @@
++# Switch 2 (kaiHEN / libounce): static newlib + libounce, AArch64, GLES via OunceVK EGL.
++set(CORE_MAIN_SOURCE ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/main.cpp)
++
++list(APPEND ARCH_DEFINES -DTARGET_POSIX -DTARGET_SWITCH2 -D__SWITCH__ -D__SWITCH2__ -D_GNU_SOURCE)
++set(SYSTEM_DEFINES -D__STDC_CONSTANT_MACROS -D_FILE_OFFSET_BITS=64)
++set(PLATFORM_DIR platform/switch2)
++set(PLATFORMDEFS_DIR platform/posix)
++set(ARCH aarch64)
++set(NEON True)
++set(ENABLE_STATIC_LIBS TRUE)
++set(USE_INTERNAL_LIBS ON)
++
++# No shared objects, no dlopen: binary add-ons and wrapped DLLs are not available.
++set(ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
++set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
++set(ENABLE_UPNP OFF CACHE BOOL "" FORCE)
++set(ENABLE_AIRTUNES OFF CACHE BOOL "" FORCE)
++set(ENABLE_OPTICAL OFF CACHE BOOL "" FORCE)
++set(ENABLE_DVDCSS OFF CACHE BOOL "" FORCE)
++set(ENABLE_EVENTCLIENTS OFF CACHE BOOL "" FORCE)
++set(ADDONS_CONFIGURE_AT_STARTUP OFF CACHE BOOL "" FORCE)
++
++
++
++# Compat headers for POSIX/Linux headers newlib lacks (sys/sysinfo.h, sys/utsname.h, sys/mman.h, mntent.h).
++# Only Kodi's own targets see them; bundled deps are built by their own projects.
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -isystem ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/compat")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/compat")
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -include ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/compat/switch2_posix.h")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/compat/switch2_posix.h")
++# Frame records in every Kodi function: the crash handler walks x29 (CrashHandler.cpp).
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
++# The internal crossguid is >= 0.2 (crossguid/guid.hpp).
++list(APPEND ARCH_DEFINES -DHAVE_NEW_CROSSGUID)
++# No libdl: dlopen & co. are stubs compiled into Kodi (xbmc/platform/switch2/DlStubs.cpp).
++set(CMAKE_DL_LIBS "")
++# Kodi's internal fmt/tinyxml2/crossguid are found as CMake config packages and are then not put on
++# the link line on this platform (Linux gets fmt through spdlog's target). Link them last, everywhere.
++set(CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_CXX_STANDARD_LIBRARIES} /k/prefix/lib/libspdlog.a /k/prefix/lib/libfmt.a /k/prefix/lib/libtinyxml2.a /k/prefix/lib/libcrossguid.a /k/prefix/lib/libuuid.a")
+diff --git a/cmake/scripts/switch2/Install.cmake b/cmake/scripts/switch2/Install.cmake
+new file mode 100644
+index 0000000..4547110
+--- /dev/null
++++ b/cmake/scripts/switch2/Install.cmake
+@@ -0,0 +1,18 @@
++# Switch 2 packaging: elf -> nro, plus the data tree copied to sdmc:/switch/kodi.
++set(APP_BINARY ${APP_NAME_LC}${APP_BINARY_SUFFIX})
++# Threads created without attributes get 1 MiB stacks (xbmc/platform/switch2/PosixCompat.cpp).
++# Only on the final link: bundled deps' configure checks must not see the wrap.
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=pthread_create)
++# pthread_detach is ENOSYS in libounce; the wrapper hands threads to a reaper (PosixCompat.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=pthread_detach)
++# fsdev fixes at the newlib reentrant layer, so read()/stat()/access(), stdio (__sread) and sqlite all
++# go through them (PosixCompat.cpp): read() bounded by the file size (EOF read is EIO on this FS),
++# stat()/lstat() of a file open for writing answered without a second open, fd registry for both.
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=_read_r -Wl,--wrap=_stat_r -Wl,--wrap=lstat
++                                           -Wl,--wrap=_open_r -Wl,--wrap=_close_r)
++# clock_gettime: libounce supports only REALTIME/MONOTONIC; the wrapper maps the Linux aliases
++# (CLOCK_MONOTONIC_RAW etc.) instead of failing with an untouched timespec (PosixCompat.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=clock_gettime)
++# abort() logs a backtrace to sdmc:/switch/kodi/crash.txt first (CrashHandler.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=abort)
++include(${CMAKE_SOURCE_DIR}/cmake/scripts/switch2/Package.cmake OPTIONAL)
+diff --git a/cmake/scripts/switch2/Macros.cmake b/cmake/scripts/switch2/Macros.cmake
+new file mode 100644
+index 0000000..7123c65
+--- /dev/null
++++ b/cmake/scripts/switch2/Macros.cmake
+@@ -0,0 +1,11 @@
++# No shared libraries on Switch 2: everything links into the one NRO.
++function(core_link_library lib wraplib)
++  message(STATUS "switch2: not wrapping ${lib} as a shared module (${wraplib}); linking statically")
++  if(TARGET ${lib})
++    set_property(GLOBAL APPEND PROPERTY SWITCH2_STATIC_WRAPLIBS ${lib})
++  endif()
++endfunction()
++
++function(find_soname lib)
++  # dlopen-by-soname has no meaning here.
++endfunction()
+diff --git a/cmake/scripts/switch2/PathSetup.cmake b/cmake/scripts/switch2/PathSetup.cmake
+new file mode 100644
+index 0000000..0786b8e
+--- /dev/null
++++ b/cmake/scripts/switch2/PathSetup.cmake
+@@ -0,0 +1,12 @@
++# Kodi's read-only data and user data both live on the SD card.
++set(prefix ${CMAKE_BINARY_DIR}/install)
++set(CMAKE_INSTALL_PREFIX ${prefix})
++set(libdir ${prefix}/lib)
++set(bindir ${prefix}/bin)
++set(includedir ${prefix}/include)
++set(datarootdir ${prefix}/share)
++set(datadir ${datarootdir})
++# Device-less paths: Kodi (CURL::IsFullPath) and sqlite (unixFullPathname) only treat paths starting
++# with "/" as absolute. main.cpp chdirs to sdmc:/switch/kodi, so sdmc is the default device.
++set(PATH_DEFINES -DBIN_INSTALL_PATH=\"/switch/kodi\" -DINSTALL_PATH=\"/switch/kodi\")
++list(APPEND final_message "Install path on SD: sdmc:/switch/kodi")
+diff --git a/cmake/treedata/switch2/subdirs.txt b/cmake/treedata/switch2/subdirs.txt
+new file mode 100644
+index 0000000..8291f3f
+--- /dev/null
++++ b/cmake/treedata/switch2/subdirs.txt
+@@ -0,0 +1,11 @@
++xbmc/platform/posix                 platform/posix
++xbmc/platform/posix/filesystem      platform/posix/filesystem
++xbmc/platform/posix/threads         platform/posix/threads
++xbmc/platform/posix/utils           platform/posix/utils
++xbmc/platform/switch2               platform/switch2
++xbmc/platform/switch2/network       platform/switch2/network
++xbmc/platform/switch2/storage       platform/switch2/storage
++xbmc/windowing/switch2              windowing/switch2
++xbmc/platform/common/speech         platform/common/speech
++xbmc/input/touch                    input/touch
++xbmc/input/touch/generic            input/touch/generic
+diff --git a/xbmc/application/Application.cpp b/xbmc/application/Application.cpp
+index a05ffab..a6dc4e6 100644
+--- a/xbmc/application/Application.cpp
++++ b/xbmc/application/Application.cpp
+@@ -827,7 +827,10 @@ bool CApplication::Initialize()
+   appListener->RegisterActionListener(&appPlayer->GetSeekHandler());
+   appListener->RegisterActionListener(&CPlayerController::GetInstance());
+ 
++#if !defined(TARGET_SWITCH2)
++  // Switch 2: the console is offline-only; never contact add-on repositories automatically.
+   CServiceBroker::GetRepositoryUpdater().Start();
++#endif
+   if (!profileManager->UsingLoginScreen())
+     CServiceBroker::GetServiceAddons().Start();
+ 
+diff --git a/xbmc/cores/AudioEngine/CMakeLists.txt b/xbmc/cores/AudioEngine/CMakeLists.txt
+index debf3dd..25c53b6 100644
+--- a/xbmc/cores/AudioEngine/CMakeLists.txt
++++ b/xbmc/cores/AudioEngine/CMakeLists.txt
+@@ -153,6 +153,11 @@ if(CORE_SYSTEM_NAME STREQUAL android)
+   list(APPEND HEADERS Sinks/AESinkAUDIOTRACK.h)
+ endif()
+ 
++if(CORE_SYSTEM_NAME STREQUAL switch2)
++  list(APPEND SOURCES Sinks/AESinkSwitch2.cpp)
++  list(APPEND HEADERS Sinks/AESinkSwitch2.h)
++endif()
++
+ if("webos" IN_LIST CORE_PLATFORM_NAME_LC)
+   list(APPEND SOURCES Sinks/AESinkStarfish.cpp)
+   list(APPEND HEADERS Sinks/AESinkStarfish.h)
+diff --git a/xbmc/cores/AudioEngine/Sinks/AESinkSwitch2.cpp b/xbmc/cores/AudioEngine/Sinks/AESinkSwitch2.cpp
+new file mode 100644
+index 0000000..2a3b743
+--- /dev/null
++++ b/xbmc/cores/AudioEngine/Sinks/AESinkSwitch2.cpp
+@@ -0,0 +1,224 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "AESinkSwitch2.h"
++
++#include "cores/AudioEngine/AESinkFactory.h"
++#include "utils/log.h"
++
++#include <algorithm>
++#include <cstdlib>
++#include <cstring>
++
++namespace
++{
++constexpr unsigned int kRate = 48000;
++constexpr size_t kAlign = 0x1000;
++} // namespace
++
++void CAESinkSwitch2::Register()
++{
++  AE::AESinkRegEntry entry;
++  entry.sinkName = "SWITCH2";
++  entry.createFunc = CAESinkSwitch2::Create;
++  entry.enumerateFunc = CAESinkSwitch2::EnumerateDevicesEx;
++  AE::CAESinkFactory::RegisterSink(entry);
++}
++
++std::unique_ptr<IAESink> CAESinkSwitch2::Create(std::string& device, AEAudioFormat& desiredFormat)
++{
++  auto sink = std::make_unique<CAESinkSwitch2>();
++  if (sink->Initialize(desiredFormat, device))
++    return sink;
++  return {};
++}
++
++void CAESinkSwitch2::EnumerateDevicesEx(AEDeviceInfoList& list, bool force)
++{
++  CAEDeviceInfo info;
++  info.m_deviceName = "default";
++  info.m_displayName = "Switch 2";
++  info.m_displayNameExtra = "audout";
++  info.m_deviceType = AE_DEVTYPE_PCM;
++  info.m_channels = AE_CH_LAYOUT_2_0;
++  info.m_sampleRates.push_back(kRate);
++  info.m_dataFormats.push_back(AE_FMT_S16NE);
++  info.m_wantsIECPassthrough = false;
++  list.push_back(info);
++}
++
++CAESinkSwitch2::~CAESinkSwitch2()
++{
++  Deinitialize();
++}
++
++bool CAESinkSwitch2::Initialize(AEAudioFormat& format, std::string& device)
++{
++  Result rc = audoutInitialize();
++  if (R_FAILED(rc))
++  {
++    CLog::Log(LOGERROR, "CAESinkSwitch2: audoutInitialize failed 0x{:x}", rc);
++    return false;
++  }
++  rc = audoutStartAudioOut();
++  if (R_FAILED(rc))
++  {
++    CLog::Log(LOGERROR, "CAESinkSwitch2: audoutStartAudioOut failed 0x{:x}", rc);
++    audoutExit();
++    return false;
++  }
++  m_open = true;
++  m_started = true;
++
++  m_bufferBytes = (kFramesPerBuffer * kFrameBytes + kAlign - 1) & ~(kAlign - 1);
++  for (Slot& slot : m_slots)
++  {
++    slot.mem = std::aligned_alloc(kAlign, m_bufferBytes);
++    if (!slot.mem)
++    {
++      Deinitialize();
++      return false;
++    }
++    std::memset(slot.mem, 0, m_bufferBytes);
++    slot.out = {};
++    slot.out.buffer = slot.mem;
++    slot.out.buffer_size = m_bufferBytes;
++    slot.queued = false;
++  }
++  m_next = 0;
++  m_appendedFrames = 0;
++
++  format.m_dataFormat = AE_FMT_S16NE;
++  format.m_sampleRate = kRate;
++  format.m_channelLayout = AE_CH_LAYOUT_2_0;
++  format.m_frameSize = kFrameBytes;
++  format.m_frames = kFramesPerBuffer;
++  device = "default";
++  return true;
++}
++
++void CAESinkSwitch2::Deinitialize()
++{
++  if (m_started)
++  {
++    bool flushed = false;
++    audoutFlushAudioOutBuffers(&flushed);
++    audoutStopAudioOut();
++    m_started = false;
++  }
++  if (m_open)
++  {
++    audoutExit();
++    m_open = false;
++  }
++  for (Slot& slot : m_slots)
++  {
++    std::free(slot.mem);
++    slot.mem = nullptr;
++    slot.queued = false;
++  }
++}
++
++void CAESinkSwitch2::MarkReleased(AudioOutBuffer* released)
++{
++  for (Slot& slot : m_slots)
++  {
++    if (&slot.out == released)
++    {
++      slot.queued = false;
++      return;
++    }
++  }
++}
++
++bool CAESinkSwitch2::ReclaimOne(uint64_t timeoutNs)
++{
++  // audoutWaitPlayFinish hands back only the first released buffer; drain the rest without
++  // waiting, or buffers released together are never reused and audout runs dry.
++  AudioOutBuffer* released = nullptr;
++  u32 count = 0;
++  Result rc = audoutWaitPlayFinish(&released, &count, timeoutNs);
++  if (R_FAILED(rc) || count == 0 || !released)
++    return false;
++  MarkReleased(released);
++  for (int guard = 0; guard < static_cast<int>(kBuffers); ++guard)
++  {
++    AudioOutBuffer* more = nullptr;
++    u32 n = 0;
++    if (R_FAILED(audoutGetReleasedAudioOutBuffer(&more, &n)) || n == 0 || !more)
++      break;
++    MarkReleased(more);
++  }
++  return true;
++}
++
++unsigned int CAESinkSwitch2::QueuedFrames() const
++{
++  unsigned int frames = 0;
++  for (const Slot& slot : m_slots)
++    if (slot.queued)
++      frames += static_cast<unsigned int>(slot.out.data_size / kFrameBytes);
++  return frames;
++}
++
++unsigned int CAESinkSwitch2::AddPackets(uint8_t** data, unsigned int frames, unsigned int offset)
++{
++  if (!m_open)
++    return 0;
++
++  Slot& slot = m_slots[m_next];
++  if (slot.queued)
++  {
++    // Wait at most one buffer's length for the oldest buffer to come back.
++    const uint64_t oneBufferNs = 1000000000ULL * kFramesPerBuffer / kRate;
++    while (slot.queued)
++    {
++      if (!ReclaimOne(oneBufferNs * 2))
++        return 0;
++    }
++  }
++
++  const unsigned int n = std::min(frames, kFramesPerBuffer);
++  std::memcpy(slot.mem, data[0] + offset * kFrameBytes, n * kFrameBytes);
++  slot.out.data_size = n * kFrameBytes;
++  slot.out.data_offset = 0;
++  if (R_FAILED(audoutAppendAudioOutBuffer(&slot.out)))
++    return 0;
++  slot.queued = true;
++  m_appendedFrames += n;
++  m_next = (m_next + 1) % kBuffers;
++  return n;
++}
++
++void CAESinkSwitch2::GetDelay(AEDelayStatus& status)
++{
++  // Collect buffers that have finished without blocking.
++  while (ReclaimOne(0))
++  {
++  }
++  // Exact delay = frames appended but not yet played (the playing buffer counts only its unplayed part).
++  u64 played = 0;
++  if (R_SUCCEEDED(audoutGetAudioOutPlayedSampleCount(&played)) && played <= m_appendedFrames)
++    status.SetDelay(static_cast<double>(m_appendedFrames - played) / kRate);
++  else
++    status.SetDelay(static_cast<double>(QueuedFrames()) / kRate);
++}
++
++double CAESinkSwitch2::GetCacheTotal()
++{
++  return static_cast<double>(kBuffers * kFramesPerBuffer) / kRate;
++}
++
++void CAESinkSwitch2::Drain()
++{
++  while (QueuedFrames() > 0)
++  {
++    if (!ReclaimOne(100000000ULL))
++      break;
++  }
++}
+diff --git a/xbmc/cores/AudioEngine/Sinks/AESinkSwitch2.h b/xbmc/cores/AudioEngine/Sinks/AESinkSwitch2.h
+new file mode 100644
+index 0000000..c031029
+--- /dev/null
++++ b/xbmc/cores/AudioEngine/Sinks/AESinkSwitch2.h
+@@ -0,0 +1,61 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++#include "cores/AudioEngine/Interfaces/AESink.h"
++#include "cores/AudioEngine/Utils/AEDeviceInfo.h"
++
++#include <array>
++#include <memory>
++
++#include <switch.h>
++
++// PCM output through audout: 48 kHz, 2 channels, signed 16-bit, a ring of 0x1000-aligned buffers.
++class CAESinkSwitch2 : public IAESink
++{
++public:
++  const char* GetName() override { return "switch2"; }
++
++  CAESinkSwitch2() = default;
++  ~CAESinkSwitch2() override;
++
++  static void Register();
++  static std::unique_ptr<IAESink> Create(std::string& device, AEAudioFormat& desiredFormat);
++  static void EnumerateDevicesEx(AEDeviceInfoList& list, bool force = false);
++
++  bool Initialize(AEAudioFormat& format, std::string& device) override;
++  void Deinitialize() override;
++
++  void GetDelay(AEDelayStatus& status) override;
++  double GetCacheTotal() override;
++  unsigned int AddPackets(uint8_t** data, unsigned int frames, unsigned int offset) override;
++  void Drain() override;
++
++private:
++  static constexpr unsigned int kBuffers = 4;
++  static constexpr unsigned int kFramesPerBuffer = 1024; // 21.3 ms at 48 kHz
++  static constexpr unsigned int kFrameBytes = 4; // 2 channels x s16
++
++  bool ReclaimOne(uint64_t timeoutNs);
++  void MarkReleased(AudioOutBuffer* released);
++  unsigned int QueuedFrames() const;
++
++  struct Slot
++  {
++    AudioOutBuffer out{};
++    void* mem = nullptr;
++    bool queued = false;
++  };
++  std::array<Slot, kBuffers> m_slots{};
++  size_t m_bufferBytes = 0;
++  unsigned int m_next = 0;
++  bool m_open = false;
++  bool m_started = false;
++  uint64_t m_appendedFrames = 0; // frames handed to audout since Initialize
++};
+diff --git a/xbmc/cores/DllLoader/exports/CMakeLists.txt b/xbmc/cores/DllLoader/exports/CMakeLists.txt
+index 4039669..a35b4ed 100644
+--- a/xbmc/cores/DllLoader/exports/CMakeLists.txt
++++ b/xbmc/cores/DllLoader/exports/CMakeLists.txt
+@@ -1,12 +1,17 @@
+ set(SOURCES emu_dummy.cpp
+             emu_msvcrt.cpp)
++if(CORE_SYSTEM_NAME STREQUAL switch2)
++  set(SOURCES emu_dummy.cpp)
++endif()
+ 
+ set(HEADERS emu_dummy.h
+             emu_msvcrt.h)
+ 
+ core_add_library(dllexports)
+ 
+-if(APPLE)
++if(CORE_SYSTEM_NAME STREQUAL switch2)
++  # Switch 2 links everything statically; no wrapped shared modules exist.
++elseif(APPLE)
+   add_library(wrapper OBJECT wrapper.c)
+   add_custom_target(wrapper.def ALL ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/wrapper_mach_alias wrapper.def)
+   set_target_properties(wrapper PROPERTIES FOLDER "Build Utilities")
+diff --git a/xbmc/cores/RetroPlayer/savestates/CMakeLists.txt b/xbmc/cores/RetroPlayer/savestates/CMakeLists.txt
+index 956776d..7d882dd 100644
+--- a/xbmc/cores/RetroPlayer/savestates/CMakeLists.txt
++++ b/xbmc/cores/RetroPlayer/savestates/CMakeLists.txt
+@@ -9,6 +9,7 @@ set(HEADERS ISavestate.h
+ )
+ 
+ core_add_library(retroplayer_savestates)
++target_include_directories(retroplayer_savestates PRIVATE ${CMAKE_BINARY_DIR}/${CORE_BUILD_DIR}/cores/RetroPlayer/messages)
+ 
+ set(DEPENDS retroplayer_messages)
+ 
+diff --git a/xbmc/cores/VideoPlayer/DVDInputStreams/dvdnav/dvd_reader.h b/xbmc/cores/VideoPlayer/DVDInputStreams/dvdnav/dvd_reader.h
+index ba80262..b6d7ede 100644
+--- a/xbmc/cores/VideoPlayer/DVDInputStreams/dvdnav/dvd_reader.h
++++ b/xbmc/cores/VideoPlayer/DVDInputStreams/dvdnav/dvd_reader.h
+@@ -42,6 +42,8 @@ struct iovec
+   void *iov_base;     /* Pointer to data. */
+   size_t iov_len;     /* Length of data.  */
+ };
++#elif defined(TARGET_SWITCH2)
++#   include <sys/_iovec.h>
+ #else
+ #   include <sys/uio.h>                                      /* struct iovec */
+ #endif
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt b/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt
+index bc36788..cb56863 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt
+@@ -44,6 +44,7 @@ if(TARGET OpenGL::GL)
+ endif()
+ 
+ if(TARGET OpenGL::GLES AND ("android" IN_LIST CORE_PLATFORM_NAME_LC OR
++                            "switch2" IN_LIST CORE_PLATFORM_NAME_LC OR
+                             "ios" IN_LIST CORE_PLATFORM_NAME_LC OR
+                             "tvos" IN_LIST CORE_PLATFORM_NAME_LC OR
+                             "gbm" IN_LIST CORE_PLATFORM_NAME_LC OR
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt b/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt
+index 5bb0219..76c678a 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt
+@@ -31,6 +31,7 @@ if(TARGET OpenGL::GL)
+ endif()
+ 
+ if(TARGET OpenGL::GLES AND ("android" IN_LIST CORE_PLATFORM_NAME_LC OR
++                            "switch2" IN_LIST CORE_PLATFORM_NAME_LC OR
+                             "ios" IN_LIST CORE_PLATFORM_NAME_LC OR
+                             "tvos" IN_LIST CORE_PLATFORM_NAME_LC OR
+                             "gbm" IN_LIST CORE_PLATFORM_NAME_LC OR
+diff --git a/xbmc/dbwrappers/sqlitedataset.cpp b/xbmc/dbwrappers/sqlitedataset.cpp
+index 2542868..501a41d 100644
+--- a/xbmc/dbwrappers/sqlitedataset.cpp
++++ b/xbmc/dbwrappers/sqlitedataset.cpp
+@@ -17,10 +17,18 @@
+ #include "utils/XTimeUtils.h"
+ #include "utils/log.h"
+ 
++#include <cctype>
+ #include <iostream>
+ #include <map>
+ #include <sstream>
+ #include <string>
++#include <sys/stat.h>
++
++#if defined(TARGET_SWITCH2)
++#include "platform/switch2/PosixCompat.h"
++
++#include <cerrno>
++#endif
+ 
+ using namespace std::chrono_literals;
+ 
+@@ -206,6 +214,81 @@ static int busy_callback(void*, int busyCount)
+   return 1;
+ }
+ 
++namespace
++{
++// Shared-cache mode (on for Switch 2, see platform/switch2/StartupProbe.cpp) reports a table or
++// schema held by another connection of this process as SQLITE_LOCKED[_SHAREDCACHE], and the busy
++// handler is not called for it. Retry such a call with a bounded backoff (~2 s in all) instead of
++// failing the query.
++bool IsLocked(int rc)
++{
++  return (rc & 0xff) == SQLITE_LOCKED;
++}
++
++class LockedRetry
++{
++public:
++  // True after sleeping when `rc` is LOCKED and the budget is not used up: call again.
++  bool Again(int rc)
++  {
++    if (!IsLocked(rc) || m_waitedMs >= 2000)
++      return false;
++    KODI::TIME::Sleep(std::chrono::milliseconds(m_stepMs));
++    m_waitedMs += m_stepMs;
++    m_stepMs = m_stepMs < 50 ? m_stepMs * 2 : 50;
++    return true;
++  }
++
++private:
++  int m_waitedMs = 0;
++  int m_stepMs = 1;
++};
++
++// True when `sql` holds more than one statement. sqlite3_exec runs statements in order, so a
++// LOCKED from a later statement comes after earlier ones were applied: such SQL is not retried.
++// Only called on the LOCKED path. A first statement that does not even prepare ran nothing, so it
++// counts as single.
++bool IsMultiStatement(sqlite3* conn, const char* sql)
++{
++  sqlite3_stmt* stmt = nullptr;
++  const char* tail = nullptr;
++  const int rc = sqlite3_prepare_v2(conn, sql, -1, &stmt, &tail);
++  sqlite3_finalize(stmt);
++  if (rc != SQLITE_OK || !tail)
++    return false;
++  for (; *tail; ++tail)
++    if (*tail != ';' && !isspace(static_cast<unsigned char>(*tail)))
++      return true;
++  return false;
++}
++
++int ExecRetry(sqlite3* conn,
++              const char* sql,
++              int (*cb)(void*, int, char**, char**),
++              void* arg,
++              char** errmsg,
++              result_set* res = nullptr)
++{
++  LockedRetry retry;
++  int rc;
++  for (;;)
++  {
++    if (res)
++      res->clear();
++    if (errmsg)
++      *errmsg = nullptr;
++    rc = sqlite3_exec(conn, sql, cb, arg, errmsg);
++    if (!IsLocked(rc) || IsMultiStatement(conn, sql) || !retry.Again(rc))
++      return rc;
++    if (errmsg && *errmsg)
++    {
++      sqlite3_free(*errmsg);
++      *errmsg = nullptr;
++    }
++  }
++}
++} // namespace
++
+ //************* SqliteDatabase implementation ***************
+ 
+ SqliteDatabase::SqliteDatabase()
+@@ -315,15 +398,40 @@ int SqliteDatabase::connect(bool create)
+ 
+   std::string db_fullpath = URIUtils::AddFileToFolder(host, db);
+ 
++  // Every failure path closes the handle and clears conn: handle() users only test conn for null,
++  // so a dangling conn would be used after free.
++  const auto closeConn = [this]() {
++    sqlite3_close(conn);
++    conn = nullptr;
++    active = false;
++  };
++
+   try
+   {
+     disconnect();
++#if defined(TARGET_SWITCH2)
++    // An aborted create can leave a 0-byte file; treat it as absent so the caller recreates it.
++    // Only ENOENT means absent: stat() of a database another connection holds open used to fail
++    // with EIO here, and a file that is open in this process is never an aborted create.
++    if (!create)
++    {
++      struct stat st;
++      if (stat(db_fullpath.c_str(), &st) != 0)
++      {
++        if (errno == ENOENT)
++          return DB_CONNECTION_NONE;
++      }
++      else if (st.st_size == 0 && !Switch2PathIsOpen(db_fullpath.c_str()))
++        return DB_CONNECTION_NONE;
++    }
++#endif
+     int flags = SQLITE_OPEN_READWRITE;
+     if (create)
+       flags |= SQLITE_OPEN_CREATE;
+     int errorCode = sqlite3_open_v2(db_fullpath.c_str(), &conn, flags, NULL);
+     if (create && errorCode == SQLITE_CANTOPEN)
+     {
++      closeConn();
+       CLog::Log(LOGFATAL, "SqliteDatabase: can't open {}", db_fullpath);
+       throw std::runtime_error("SqliteDatabase: can't open " + db_fullpath);
+     }
+@@ -331,22 +439,29 @@ int SqliteDatabase::connect(bool create)
+     {
+       sqlite3_extended_result_codes(conn, 1);
+       sqlite3_busy_handler(conn, busy_callback, NULL);
+-      if (setErr(sqlite3_exec(getHandle(), "PRAGMA empty_result_callbacks=ON", NULL, NULL, NULL),
++      if (setErr(ExecRetry(getHandle(), "PRAGMA empty_result_callbacks=ON", NULL, NULL, NULL),
+                  "PRAGMA empty_result_callbacks=ON") != SQLITE_OK)
+       {
+         throw DbErrors("%s", getErrorMsg());
+       }
+       else if (sqlite3_db_readonly(conn, nullptr) == 1)
+       {
++        closeConn();
+         CLog::Log(LOGFATAL, "SqliteDatabase: {} is read only", db_fullpath);
+         throw std::runtime_error("SqliteDatabase: " + db_fullpath + " is read only");
+       }
+       errorCode = sqlite3_create_collation(conn, "ALPHANUM", SQLITE_UTF8, 0, AlphaNumericCollation);
+       if (errorCode != SQLITE_OK)
+       {
++        closeConn();
+         CLog::Log(LOGFATAL, "SqliteDatabase: can not register collation");
+         throw std::runtime_error("SqliteDatabase: can not register collation " + db_fullpath);
+       }
++#if defined(TARGET_SWITCH2)
++      // Shared cache: readers take no table read-locks, so they neither wait for nor block writers
++      // on other connections of this process (fewer SQLITE_LOCKED). Best effort.
++      ExecRetry(conn, "PRAGMA read_uncommitted=ON", NULL, NULL, NULL);
++#endif
+       active = true;
+       return DB_CONNECTION_OK;
+     }
+@@ -355,7 +470,7 @@ int SqliteDatabase::connect(bool create)
+   {
+   }
+ 
+-  sqlite3_close(conn);
++  closeConn();
+ 
+   return DB_CONNECTION_NONE;
+ }
+@@ -371,7 +486,7 @@ bool SqliteDatabase::exists(void)
+   // performing a select all on the sqlite_master will return rows if there are tables
+   // defined indicating it's not empty and therefore must "exist".
+   snprintf(sqlcmd, sizeof(sqlcmd), "SELECT * FROM sqlite_master");
+-  if ((last_err = sqlite3_exec(getHandle(), sqlcmd, &callback, &res, NULL)) == SQLITE_OK)
++  if ((last_err = ExecRetry(getHandle(), sqlcmd, &callback, &res, NULL, &res)) == SQLITE_OK)
+   {
+     bRet = (res.records.size() > 0);
+   }
+@@ -384,6 +499,7 @@ void SqliteDatabase::disconnect(void)
+   if (active == false)
+     return;
+   sqlite3_close(conn);
++  conn = nullptr;
+   active = false;
+ }
+ 
+@@ -548,7 +664,7 @@ void SqliteDatabase::start_transaction()
+ {
+   if (active)
+   {
+-    sqlite3_exec(conn, "begin IMMEDIATE", NULL, NULL, NULL);
++    ExecRetry(conn, "begin IMMEDIATE", NULL, NULL, NULL);
+     _in_transaction = true;
+   }
+ }
+@@ -557,7 +673,14 @@ void SqliteDatabase::commit_transaction()
+ {
+   if (active)
+   {
+-    sqlite3_exec(conn, "commit", NULL, NULL, NULL);
++    // A commit that still fails (LOCKED past the retry budget) would keep this connection's
++    // shared-cache write lock and block every other connection: roll back instead.
++    if (ExecRetry(conn, "commit", NULL, NULL, NULL) != SQLITE_OK &&
++        !sqlite3_get_autocommit(conn))
++    {
++      CLog::Log(LOGERROR, "SQL: [{}] commit failed ({}), rolling back", db, sqlite3_errmsg(conn));
++      ExecRetry(conn, "rollback", NULL, NULL, NULL);
++    }
+     _in_transaction = false;
+   }
+ }
+@@ -566,7 +689,7 @@ void SqliteDatabase::rollback_transaction()
+ {
+   if (active)
+   {
+-    sqlite3_exec(conn, "rollback", NULL, NULL, NULL);
++    ExecRetry(conn, "rollback", NULL, NULL, NULL);
+     _in_transaction = false;
+   }
+ }
+@@ -704,7 +827,7 @@ void SqliteDataset::make_query(StringList& _sql)
+       query = i;
+       char* err = NULL;
+       Dataset::parse_sql(query);
+-      if (db->setErr(sqlite3_exec(this->handle(), query.c_str(), NULL, NULL, &err),
++      if (db->setErr(ExecRetry(this->handle(), query.c_str(), NULL, NULL, &err),
+                      query.c_str()) != SQLITE_OK)
+       {
+         std::string message = db->getErrorMsg();
+@@ -847,7 +970,7 @@ int SqliteDataset::exec(const std::string& sql)
+   }
+ 
+   char* errmsg;
+-  if ((res = db->setErr(sqlite3_exec(handle(), qry.c_str(), &callback, &exec_res, &errmsg),
++  if ((res = db->setErr(ExecRetry(handle(), qry.c_str(), &callback, &exec_res, &errmsg, &exec_res),
+                         qry.c_str())) == SQLITE_OK)
+     return res;
+   else
+@@ -888,8 +1011,14 @@ bool SqliteDataset::query(const std::string& query)
+   close();
+ 
+   sqlite3_stmt* stmt = NULL;
+-  if (db->setErr(sqlite3_prepare_v2(handle(), query.c_str(), -1, &stmt, NULL), query.c_str()) !=
+-      SQLITE_OK)
++  LockedRetry retry;
++  int prepareRc;
++  do
++  {
++    stmt = NULL;
++    prepareRc = sqlite3_prepare_v2(handle(), query.c_str(), -1, &stmt, NULL);
++  } while (retry.Again(prepareRc));
++  if (db->setErr(prepareRc, query.c_str()) != SQLITE_OK)
+     throw DbErrors("%s", db->getErrorMsg());
+ 
+   // column headers
+@@ -899,8 +1028,21 @@ bool SqliteDataset::query(const std::string& query)
+     result.record_header[i].name = sqlite3_column_name(stmt, i);
+ 
+   // returned rows
+-  while (sqlite3_step(stmt) == SQLITE_ROW)
+-  { // have a row of data
++  for (;;)
++  {
++    const int stepRc = sqlite3_step(stmt);
++    if (stepRc != SQLITE_ROW)
++    {
++      // A shared-cache table lock is taken when the statement starts, so LOCKED comes before the
++      // first row: reset and step again.
++      if (result.records.empty() && retry.Again(stepRc))
++      {
++        sqlite3_reset(stmt);
++        continue;
++      }
++      break;
++    }
++    // have a row of data
+     sql_record* res = new sql_record;
+     res->resize(numColumns);
+     for (unsigned int i = 0; i < numColumns; i++)
+diff --git a/xbmc/dbwrappers/sqlitedataset.h b/xbmc/dbwrappers/sqlitedataset.h
+index 4695dfd..c57f797 100644
+--- a/xbmc/dbwrappers/sqlitedataset.h
++++ b/xbmc/dbwrappers/sqlitedataset.h
+@@ -28,8 +28,8 @@ namespace dbiplus
+ class SqliteDatabase : public Database
+ {
+ protected:
+-  /* connect descriptor */
+-  sqlite3* conn;
++  /* connect descriptor (null whenever no connection is open: handle() users test it) */
++  sqlite3* conn = nullptr;
+   bool _in_transaction;
+   int last_err;
+ 
+diff --git a/xbmc/filesystem/FileCache.cpp b/xbmc/filesystem/FileCache.cpp
+index 94f7bd9..e03b95f 100644
+--- a/xbmc/filesystem/FileCache.cpp
++++ b/xbmc/filesystem/FileCache.cpp
+@@ -115,8 +115,17 @@ bool CFileCache::Open(const CURL& url)
+   if (!settings)
+     return false;
+ 
++#if defined(TARGET_SWITCH2)
++  // A disk cache (memorysize 0) opens its cache file twice, once for writing and once for reading;
++  // the Switch 2 SD file system refuses the second open. Use a 20 MB memory cache instead.
++  unsigned int cacheMemSize =
++      settings->GetInt(CSettings::SETTING_FILECACHE_MEMORYSIZE) * 1024 * 1024;
++  if (cacheMemSize == 0)
++    cacheMemSize = 20 * 1024 * 1024;
++#else
+   const unsigned int cacheMemSize =
+       settings->GetInt(CSettings::SETTING_FILECACHE_MEMORYSIZE) * 1024 * 1024;
++#endif
+ 
+   m_source.IoControl(IOCTRL_SET_CACHE, this);
+ 
+diff --git a/xbmc/guilib/XBTFReader.cpp b/xbmc/guilib/XBTFReader.cpp
+index 6d74f46..271b239 100644
+--- a/xbmc/guilib/XBTFReader.cpp
++++ b/xbmc/guilib/XBTFReader.cpp
+@@ -200,7 +200,7 @@ bool CXBTFReader::Load(const CXBTFFrame& frame, unsigned char* buffer) const
+   if (m_file == nullptr)
+     return false;
+ 
+-#if defined(TARGET_DARWIN) || defined(TARGET_FREEBSD)
++#if defined(TARGET_DARWIN) || defined(TARGET_FREEBSD) || defined(TARGET_SWITCH2)
+   if (fseeko(m_file, static_cast<off_t>(frame.GetOffset()), SEEK_SET) == -1)
+ #elif defined(TARGET_ANDROID)
+   if (fseek(m_file, static_cast<long>(frame.GetOffset()), SEEK_SET) == -1)  // No fseeko64 before N
+diff --git a/xbmc/network/DNSNameCache.cpp b/xbmc/network/DNSNameCache.cpp
+index 148c930..13df4f8 100644
+--- a/xbmc/network/DNSNameCache.cpp
++++ b/xbmc/network/DNSNameCache.cpp
+@@ -24,7 +24,7 @@
+ #include <netdb.h>
+ #include <netinet/in.h>
+ 
+-#if defined(TARGET_FREEBSD)
++#if defined(TARGET_FREEBSD) || defined(TARGET_SWITCH2)
+ #include <sys/socket.h>
+ #endif
+ 
+diff --git a/xbmc/network/NetworkServices.cpp b/xbmc/network/NetworkServices.cpp
+index 0602807..2b2b5a3 100644
+--- a/xbmc/network/NetworkServices.cpp
++++ b/xbmc/network/NetworkServices.cpp
+@@ -548,10 +548,13 @@ void CNetworkServices::Start()
+   StartZeroconf();
+   if (m_settings->GetBool(CSettings::SETTING_SERVICES_UPNP))
+     StartUPnP();
++#if !defined(TARGET_SWITCH2)
++  // Switch 2: no listening sockets on the first port (the console is offline-only).
+   if (m_settings->GetBool(CSettings::SETTING_SERVICES_ESENABLED) && !StartEventServer())
+     CGUIDialogKaiToast::QueueNotification(CGUIDialogKaiToast::Warning, g_localizeStrings.Get(33102), g_localizeStrings.Get(33100));
+   if (m_settings->GetBool(CSettings::SETTING_SERVICES_ESENABLED) && !StartJSONRPCServer())
+     CGUIDialogKaiToast::QueueNotification(CGUIDialogKaiToast::Warning, g_localizeStrings.Get(33103), g_localizeStrings.Get(33100));
++#endif
+ 
+ #ifdef HAS_WEB_SERVER
+   // Start web server after eventserver and JSON-RPC server, so users can use these interfaces
+diff --git a/xbmc/platform/posix/Filesystem.cpp b/xbmc/platform/posix/Filesystem.cpp
+index 6e7282c..4d5bdc3 100644
+--- a/xbmc/platform/posix/Filesystem.cpp
++++ b/xbmc/platform/posix/Filesystem.cpp
+@@ -10,7 +10,7 @@
+ #include "filesystem/SpecialProtocol.h"
+ #include "utils/URIUtils.h"
+ 
+-#if defined(TARGET_LINUX)
++#if defined(TARGET_LINUX) || defined(TARGET_SWITCH2)
+ #include <sys/statvfs.h>
+ #elif defined(TARGET_DARWIN) || defined(TARGET_FREEBSD)
+ #include <sys/param.h>
+@@ -39,6 +39,9 @@ space_info space(const std::string& path, std::error_code& ec)
+ #if defined(TARGET_LINUX)
+   struct statvfs64 fsInfo;
+   auto result = statvfs64(CSpecialProtocol::TranslatePath(path).c_str(), &fsInfo);
++#elif defined(TARGET_SWITCH2)
++  struct statvfs fsInfo;
++  auto result = statvfs(CSpecialProtocol::TranslatePath(path).c_str(), &fsInfo);
+ #else
+   struct statfs fsInfo;
+   // is 64-bit on android and darwin (10.6SDK + any iOS)
+diff --git a/xbmc/platform/posix/PlatformDefs.h b/xbmc/platform/posix/PlatformDefs.h
+index e6e59fe..243d739 100644
+--- a/xbmc/platform/posix/PlatformDefs.h
++++ b/xbmc/platform/posix/PlatformDefs.h
+@@ -113,6 +113,18 @@ typedef int (*LPTHREAD_START_ROUTINE)(void *);
+   #if defined(TARGET_FREEBSD)
+     #define statfs64 statfs
+   #endif
++#elif defined(TARGET_SWITCH2)
++  // newlib's off_t, struct stat and fseeko are already 64-bit; it has no *64 variants.
++  #define stat64 stat
++  #define __stat64 stat
++  #define fstat64 fstat
++  #define lstat64 lstat
++  #define statvfs64 statvfs
++  #define fseeko64 fseeko
++  #define ftello64 ftello
++  #define lseek64 lseek
++  #define fopen64 fopen
++  typedef int64_t off64_t;
+ #else
+   #define __stat64 stat64
+ #endif
+diff --git a/xbmc/platform/posix/XTimeUtils.cpp b/xbmc/platform/posix/XTimeUtils.cpp
+index e78e5cf..5552135 100644
+--- a/xbmc/platform/posix/XTimeUtils.cpp
++++ b/xbmc/platform/posix/XTimeUtils.cpp
+@@ -41,7 +41,11 @@ uint32_t GetTimeZoneInformation(TimeZoneInformation* timeZoneInformation)
+   struct tm t;
+   time_t tt = time(NULL);
+   if (localtime_r(&tt, &t))
++#if defined(TARGET_SWITCH2)
++    timeZoneInformation->bias = 0; // newlib struct tm has no tm_gmtoff; Kodi runs in UTC here
++#else
+     timeZoneInformation->bias = -t.tm_gmtoff / 60;
++#endif
+ 
+   timeZoneInformation->standardName = tzname[0];
+   timeZoneInformation->daylightName = tzname[1];
+@@ -78,7 +82,9 @@ int FileTimeToLocalFileTime(const FileTime* fileTime, FileTime* localFileTime)
+   FileTimeToTimeT(fileTime, &ft);
+   localtime_r(&ft, &tm_ft);
+ 
++#if !defined(TARGET_SWITCH2)
+   l.QuadPart += static_cast<unsigned long long>(tm_ft.tm_gmtoff) * 10000000;
++#endif
+ 
+   localFileTime->lowDateTime = l.u.LowPart;
+   localFileTime->highDateTime = l.u.HighPart;
+@@ -178,7 +184,11 @@ int LocalFileTimeToFileTime(const FileTime* localFileTime, FileTime* fileTime)
+   l.u.LowPart = localFileTime->lowDateTime;
+   l.u.HighPart = localFileTime->highDateTime;
+ 
++#if defined(TARGET_SWITCH2)
++  l.QuadPart += (unsigned long long) _timezone * 10000000; // newlib names glibc's timezone _timezone
++#else
+   l.QuadPart += (unsigned long long) timezone * 10000000;
++#endif
+ 
+   fileTime->lowDateTime = l.u.LowPart;
+   fileTime->highDateTime = l.u.HighPart;
+diff --git a/xbmc/platform/posix/threads/RecursiveMutex.cpp b/xbmc/platform/posix/threads/RecursiveMutex.cpp
+index 19a940e..0e6940c 100644
+--- a/xbmc/platform/posix/threads/RecursiveMutex.cpp
++++ b/xbmc/platform/posix/threads/RecursiveMutex.cpp
+@@ -18,7 +18,7 @@ pthread_mutexattr_t& CRecursiveMutex::getRecursiveAttr()
+     pthread_mutexattr_t recursiveAttr;
+     pthread_mutexattr_init(&recursiveAttr);
+     pthread_mutexattr_settype(&recursiveAttr, PTHREAD_MUTEX_RECURSIVE);
+-#if !defined(TARGET_ANDROID)
++#if !defined(TARGET_ANDROID) && !defined(TARGET_SWITCH2)
+     pthread_mutexattr_setprotocol(&recursiveAttr, PTHREAD_PRIO_INHERIT);
+ #endif
+     return recursiveAttr;
+diff --git a/xbmc/platform/switch2/CMakeLists.txt b/xbmc/platform/switch2/CMakeLists.txt
+new file mode 100644
+index 0000000..cf1c07a
+--- /dev/null
++++ b/xbmc/platform/switch2/CMakeLists.txt
+@@ -0,0 +1,11 @@
++set(SOURCES PlatformSwitch2.cpp
++            CrashHandler.cpp
++            DlStubs.cpp
++            PosixCompat.cpp
++            StartupProbe.cpp
++            SystemInfoSwitch2.cpp)
++set(HEADERS PlatformSwitch2.h
++            PosixCompat.h
++            dlfcn.h)
++
++core_add_library(platform_switch2)
+diff --git a/xbmc/platform/switch2/CrashHandler.cpp b/xbmc/platform/switch2/CrashHandler.cpp
+new file mode 100644
+index 0000000..cd8a189
+--- /dev/null
++++ b/xbmc/platform/switch2/CrashHandler.cpp
+@@ -0,0 +1,457 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++// Crash diagnostics for the Switch 2 NRO. Everything goes to sdmc:/switch/kodi/crash.txt through
++// raw fs IPC (Switch2RawAppend): no stdio, no malloc, no newlib or Kodi locks, so it also works on a
++// thread that faulted while holding one of them.
++//  * Native CPU exceptions: libounce's crt0 (libnx-style) calls __libnx_exception_handler on
++//    __nx_exception_stack when the loader forwards the exception to this NRO. Logged: error_desc,
++//    pc/lr/sp/fp/far/esr, x0-x28, the module base (subtract it to symbolise against build/kodi.bin,
++//    whose image starts at 0), a frame-pointer backtrace and the code addresses found on the stack.
++//  * C++: std::terminate (uncaught exception, noexcept violation, pure virtual call) and abort():
++//    exception type, what(), backtrace.
++
++#include "PosixCompat.h"
++
++#include <atomic>
++#include <cstdint>
++#include <cstdlib>
++#include <cstring>
++#include <cxxabi.h>
++#include <exception>
++#include <typeinfo>
++
++#include <switch.h>
++
++extern "C"
++{
++// Our handler runs on this stack (libounce's weak default is 1 KiB).
++alignas(16) u8 __nx_exception_stack[0x8000];
++u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
++// Handle the exception ourselves even when a debugger is attached (kaiHEN session).
++u32 __nx_exception_ignoredebug = 1;
++
++void __libnx_exception_handler(ThreadExceptionDump* ctx);
++void __real_abort(void) __attribute__((noreturn));
++void __wrap_abort(void) __attribute__((noreturn));
++}
++
++namespace
++{
++constexpr const char* CRASH = "/switch/kodi/crash.txt";
++constexpr const char* BOOT = "/switch/kodi/boot.txt";
++
++FsFileSystem* g_sdmc = nullptr;
++u64 g_textBase = 0;
++u64 g_textEnd = 0;
++std::atomic<int> g_busy{0}; // soft-crash (terminate/abort) buffer owner
++std::atomic<int> g_appendLock{0}; // one Switch2RawAppend at a time: the FS refuses a second open
++std::atomic<u64> g_exceptionTid{0}; // thread handling the native exception, 0 = none
++std::atomic<int> g_inTerminate{0};
++// Separate buffers: a native fault while a soft crash is being logged must not mix the two.
++char g_softBuf[8 * 1024];
++char g_nativeBuf[12 * 1024];
++// The native handler copies the dump here at once and does its work on its own stack, so another
++// thread entering __libnx_exception_entry (which resets sp to the top of __nx_exception_stack and
++// rewrites __nx_exceptiondump) cannot corrupt it.
++ThreadExceptionDump g_dump;
++alignas(16) u8 g_walkStack[0x8000];
++
++void ResolveModule()
++{
++  if (g_textBase)
++    return;
++  MemoryInfo mi;
++  u32 pi;
++  if (R_SUCCEEDED(svcQueryMemory(&mi, &pi, reinterpret_cast<u64>(&ResolveModule))))
++  {
++    // NRO .text starts at the image base, so the RX region holding our code starts there.
++    g_textBase = mi.addr;
++    g_textEnd = mi.addr + mi.size;
++  }
++}
++
++bool Readable(u64 addr, u64 len)
++{
++  if (addr == 0 || len == 0 || addr + len < addr)
++    return false;
++  MemoryInfo mi;
++  u32 pi;
++  if (R_FAILED(svcQueryMemory(&mi, &pi, addr)))
++    return false;
++  if ((mi.type & 0xff) == MemType_Unmapped || !(mi.perm & Perm_R))
++    return false;
++  return addr + len <= mi.addr + mi.size;
++}
++
++bool InText(u64 a)
++{
++  return g_textBase && a >= g_textBase && a < g_textEnd;
++}
++
++struct Out
++{
++  char* buf;
++  size_t cap;
++  size_t n = 0;
++  template<size_t N>
++  explicit Out(char (&b)[N]) : buf(b), cap(N)
++  {
++  }
++  void Put(const char* s)
++  {
++    while (s && *s && n < cap - 1)
++      buf[n++] = *s++;
++  }
++  void Hex(u64 v)
++  {
++    char t[19];
++    t[0] = '0';
++    t[1] = 'x';
++    for (int i = 0; i < 16; ++i)
++      t[2 + i] = "0123456789abcdef"[(v >> ((15 - i) * 4)) & 0xf];
++    t[18] = '\0';
++    Put(t);
++  }
++  void Dec(long long v)
++  {
++    char t[24];
++    int i = 23;
++    t[i] = '\0';
++    const bool neg = v < 0;
++    unsigned long long u = neg ? 0ULL - static_cast<unsigned long long>(v) : v;
++    do
++    {
++      t[--i] = static_cast<char>('0' + u % 10);
++      u /= 10;
++    } while (u && i > 1);
++    if (neg)
++      t[--i] = '-';
++    Put(t + i);
++  }
++  void Kv(const char* k, u64 v)
++  {
++    Put(" ");
++    Put(k);
++    Put("=");
++    Hex(v);
++  }
++  void Addr(const char* k, u64 v)
++  {
++    Kv(k, v);
++    if (InText(v))
++    {
++      Put("(+");
++      Hex(v - g_textBase);
++      Put(")");
++    }
++  }
++  void Header(const char* what)
++  {
++    Put("=== ");
++    Put(what);
++    Put(" ms=");
++    Dec(static_cast<long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL));
++    u64 tid = 0;
++    svcGetThreadId(&tid, CUR_THREAD_HANDLE);
++    Put(" tid=");
++    Dec(static_cast<long long>(tid));
++    Kv("base", g_textBase);
++    Kv("text_end", g_textEnd);
++    Put("\n");
++  }
++  void Backtrace(u64 fp)
++  {
++    Put("backtrace (fp chain, module offsets in parentheses):\n");
++    for (int i = 0; i < 48; ++i)
++    {
++      if ((fp & 7) != 0 || !Readable(fp, 16))
++        break;
++      const u64* frame = reinterpret_cast<const u64*>(fp);
++      const u64 next = frame[0];
++      const u64 lr = frame[1];
++      Put(" #");
++      Dec(i);
++      Addr("lr", lr);
++      Kv("fp", fp);
++      Put("\n");
++      if (next <= fp)
++        break;
++      fp = next;
++    }
++  }
++  void StackScan(u64 sp)
++  {
++    Put("code addresses on the stack (sp+off: value):\n");
++    int found = 0;
++    for (u64 off = 0; off < 0x2000 && found < 48; off += 8)
++    {
++      if (((sp + off) & 0xfff) == 0 || off == 0)
++        if (!Readable(sp + off, 8))
++          break;
++      const u64 v = *reinterpret_cast<const u64*>(sp + off);
++      if (!InText(v))
++        continue;
++      Put(" sp+");
++      Hex(off);
++      Addr(":", v);
++      Put("\n");
++      ++found;
++    }
++  }
++};
++
++void Flush(Out& o)
++{
++  Switch2RawAppend(CRASH, o.buf, o.n);
++  o.n = 0;
++}
++
++const char* DescName(u32 d)
++{
++  switch (d)
++  {
++    case ThreadExceptionDesc_InstructionAbort:
++      return "InstructionAbort";
++    case ThreadExceptionDesc_MisalignedPC:
++      return "MisalignedPC";
++    case ThreadExceptionDesc_MisalignedSP:
++      return "MisalignedSP";
++    case ThreadExceptionDesc_SError:
++      return "SError";
++    case ThreadExceptionDesc_BadSVC:
++      return "BadSVC";
++    case ThreadExceptionDesc_Trap:
++      return "Trap";
++    case ThreadExceptionDesc_Other:
++      return "Other(DataAbort?)";
++    default:
++      return "?";
++  }
++}
++
++bool Acquire()
++{
++  int expected = 0;
++  return g_busy.compare_exchange_strong(expected, 1);
++}
++
++void Release()
++{
++  g_busy.store(0);
++}
++
++void LogSoftCrash(const char* what, const char* type, u64 fp)
++{
++  if (!Acquire())
++    return;
++  ResolveModule();
++  Out o(g_softBuf);
++  o.Header(what);
++  if (type)
++  {
++    o.Put("exception type: ");
++    o.Put(type);
++    o.Put("\n");
++  }
++  o.Backtrace(fp);
++  Flush(o);
++  Release();
++}
++
++[[noreturn]] void OnTerminate()
++{
++  g_inTerminate.store(1);
++  const std::type_info* t = abi::__cxa_current_exception_type();
++  LogSoftCrash("std::terminate", t ? t->name() : "(no active exception)",
++               reinterpret_cast<u64>(__builtin_frame_address(0)));
++  // Second line with what(): rethrowing allocates, so it comes after the flushed backtrace.
++  if (t)
++  {
++    try
++    {
++      std::rethrow_exception(std::current_exception());
++    }
++    catch (const std::exception& e)
++    {
++      if (Acquire())
++      {
++        Out o(g_softBuf);
++        o.Put("what(): ");
++        o.Put(e.what());
++        o.Put("\n");
++        Flush(o);
++        Release();
++      }
++    }
++    catch (...)
++    {
++    }
++  }
++  __real_abort();
++}
++} // namespace
++
++extern "C" int Switch2RawAppend(const char* fspath, const char* buf, unsigned long len)
++{
++  // Only ever below /switch/kodi/ on the SD card.
++  if (!fspath || std::strncmp(fspath, "/switch/kodi/", 13) != 0 || std::strstr(fspath, ".."))
++    return -1;
++  FsFileSystem* fs = g_sdmc ? g_sdmc : fsdevGetDeviceFileSystem("sdmc");
++  if (!fs)
++    return -1;
++  // Serialise writers (a second open of a file open for writing fails on this FS). Bounded wait,
++  // then go ahead anyway: a thread that crashed inside here must not block the crash log forever.
++  bool locked = false;
++  for (int i = 0; i < 200 && !locked; ++i)
++  {
++    int expected = 0;
++    locked = g_appendLock.compare_exchange_strong(expected, 1);
++    if (!locked)
++      svcSleepThread(1000000LL);
++  }
++  fsFsCreateFile(fs, fspath, 0, 0); // fails harmlessly when the file exists
++  FsFile f;
++  Result rc = fsFsOpenFile(fs, fspath, FsOpenMode_Write | FsOpenMode_Append, &f);
++  if (R_SUCCEEDED(rc))
++  {
++    s64 size = 0;
++    rc = fsFileGetSize(&f, &size);
++    if (R_SUCCEEDED(rc) && len)
++      rc = fsFileWrite(&f, size, buf, len, FsWriteOption_Flush);
++    fsFileClose(&f);
++  }
++  if (locked)
++    g_appendLock.store(0);
++  return R_SUCCEEDED(rc) ? 0 : -1;
++}
++
++extern "C" void Switch2BootLog(const char* what, long long value)
++{
++  char line[160];
++  size_t n = 0;
++  auto put = [&](const char* s) {
++    while (*s && n < sizeof(line) - 2)
++      line[n++] = *s++;
++  };
++  auto dec = [&](unsigned long long u, bool neg) {
++    char t[24];
++    int i = 23;
++    t[i] = '\0';
++    do
++    {
++      t[--i] = static_cast<char>('0' + u % 10);
++      u /= 10;
++    } while (u && i > 1);
++    if (neg)
++      t[--i] = '-';
++    put(t + i);
++  };
++  dec(armTicksToNs(armGetSystemTick()) / 1000000ULL, false);
++  put(" ");
++  put(what ? what : "?");
++  put(" ");
++  dec(value < 0 ? 0ULL - static_cast<unsigned long long>(value) : value, value < 0);
++  line[n++] = '\n';
++  Switch2RawAppend(BOOT, line, n);
++}
++
++extern "C" void Switch2InstallCrashHandlers(void)
++{
++  g_sdmc = fsdevGetDeviceFileSystem("sdmc");
++  ResolveModule();
++  std::set_terminate(OnTerminate);
++  Switch2BootLog("crash-handlers-armed base", static_cast<long long>(g_textBase));
++}
++
++extern "C" void __wrap_abort(void)
++{
++  if (!g_inTerminate.load())
++    LogSoftCrash("abort", nullptr, reinterpret_cast<u64>(__builtin_frame_address(0)));
++  __real_abort();
++}
++
++namespace
++{
++// Calls fn on the top of stack[]; returns with the original sp. fn follows the AAPCS64.
++void RunOnStack(void (*fn)(), u8* top)
++{
++  asm volatile("mov x19, sp\n\t"
++               "mov sp, %0\n\t"
++               "blr %1\n\t"
++               "mov sp, x19\n\t"
++               :
++               : "r"(top), "r"(fn)
++               : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
++                 "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x30", "v0", "v1", "v2", "v3",
++                 "v4", "v5", "v6", "v7", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
++                 "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "cc", "memory");
++}
++
++void LogNativeException()
++{
++  const ThreadExceptionDump* ctx = &g_dump;
++  ResolveModule();
++  Out o(g_nativeBuf);
++  o.Header("native exception");
++  o.Put("error_desc=");
++  o.Hex(ctx->error_desc);
++  o.Put(" ");
++  o.Put(DescName(ctx->error_desc));
++  o.Kv("esr", ctx->esr);
++  o.Kv("far", ctx->far.x);
++  o.Kv("pstate", ctx->pstate);
++  o.Kv("afsr0", ctx->afsr0);
++  o.Kv("afsr1", ctx->afsr1);
++  o.Put("\n");
++  o.Addr("pc", ctx->pc.x);
++  o.Addr("lr", ctx->lr.x);
++  o.Kv("sp", ctx->sp.x);
++  o.Kv("fp", ctx->fp.x);
++  o.Put("\n");
++  for (int i = 0; i < 29; ++i)
++  {
++    o.Put(" x");
++    o.Dec(i);
++    o.Put("=");
++    o.Hex(ctx->cpu_gprs[i].x);
++    if (i % 4 == 3)
++      o.Put("\n");
++  }
++  o.Put("\n");
++  Flush(o); // registers are on the SD before the walk touches any memory
++  o.Backtrace(ctx->fp.x);
++  o.StackScan(ctx->sp.x);
++  o.Put("=== end\n");
++  Flush(o);
++}
++} // namespace
++
++extern "C" void __libnx_exception_handler(ThreadExceptionDump* ctx)
++{
++  u64 tid = 0;
++  svcGetThreadId(&tid, CUR_THREAD_HANDLE);
++  if (!tid)
++    tid = ~0ULL;
++  u64 expected = 0;
++  if (!g_exceptionTid.compare_exchange_strong(expected, tid))
++  {
++    // A fault inside this handler on the same thread: give up (return -> svcBreak).
++    if (expected == tid)
++      return;
++    // Another thread faulted while the first is being logged: park it; the first thread's
++    // svcBreak ends the process.
++    for (;;)
++      svcSleepThread(INT64_MAX);
++  }
++  if (!ctx)
++    return;
++  std::memcpy(&g_dump, ctx, sizeof(g_dump));
++  RunOnStack(LogNativeException, g_walkStack + sizeof(g_walkStack));
++  // Returning makes libounce's __libnx_exception_returnentry call svcBreak: the process ends as before.
++}
+diff --git a/xbmc/platform/switch2/DlStubs.cpp b/xbmc/platform/switch2/DlStubs.cpp
+new file mode 100644
+index 0000000..574b9b9
+--- /dev/null
++++ b/xbmc/platform/switch2/DlStubs.cpp
+@@ -0,0 +1,40 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "dlfcn.h"
++
++namespace
++{
++char kNoLoader[] = "dynamic loading is not available on Switch 2";
++}
++
++extern "C" void* dlopen(const char*, int)
++{
++  return nullptr;
++}
++
++extern "C" void* dlsym(void*, const char*)
++{
++  return nullptr;
++}
++
++extern "C" int dlclose(void*)
++{
++  return 0;
++}
++
++extern "C" char* dlerror(void)
++{
++  return kNoLoader;
++}
++
++// Kodi's Windows-DLL emulation layer (cores/DllLoader/exports/emu_msvcrt) is not built on Switch 2;
++// CApplication still calls its environment hooks.
++extern "C" void init_emu_environ() {}
++extern "C" void update_emu_environ() {}
++extern "C" void cleanup_emu_environ() {}
+diff --git a/xbmc/platform/switch2/PlatformSwitch2.cpp b/xbmc/platform/switch2/PlatformSwitch2.cpp
+new file mode 100644
+index 0000000..22a4375
+--- /dev/null
++++ b/xbmc/platform/switch2/PlatformSwitch2.cpp
+@@ -0,0 +1,36 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "PlatformSwitch2.h"
++
++#include "cores/AudioEngine/Sinks/AESinkSwitch2.h"
++#include "windowing/switch2/WinSystemSwitch2GLESContext.h"
++
++#include <cstdlib>
++
++CPlatform* CPlatform::CreateInstance()
++{
++  return new CPlatformSwitch2();
++}
++
++bool CPlatformSwitch2::InitStageOne()
++{
++  if (!CPlatformPosix::InitStageOne())
++    return false;
++
++  setenv("OS", "Switch2", true);
++
++  KODI::WINDOWING::SWITCH2::CWinSystemSwitch2GLESContext::Register();
++  CAESinkSwitch2::Register();
++  return true;
++}
++
++void CPlatformSwitch2::DeinitStageOne()
++{
++  CPlatformPosix::DeinitStageOne();
++}
+diff --git a/xbmc/platform/switch2/PlatformSwitch2.h b/xbmc/platform/switch2/PlatformSwitch2.h
+new file mode 100644
+index 0000000..6998774
+--- /dev/null
++++ b/xbmc/platform/switch2/PlatformSwitch2.h
+@@ -0,0 +1,24 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++#include "platform/posix/PlatformPosix.h"
++
++// Nintendo Switch 2 homebrew (kaiHEN + libounce).
++class CPlatformSwitch2 : public CPlatformPosix
++{
++public:
++  CPlatformSwitch2() = default;
++  ~CPlatformSwitch2() override = default;
++
++  bool InitStageOne() override;
++  void DeinitStageOne() override;
++
++  bool IsConfigureAddonsAtStartupEnabled() override { return false; }
++};
+diff --git a/xbmc/platform/switch2/PosixCompat.cpp b/xbmc/platform/switch2/PosixCompat.cpp
+new file mode 100644
+index 0000000..cdea7ef
+--- /dev/null
++++ b/xbmc/platform/switch2/PosixCompat.cpp
+@@ -0,0 +1,482 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "PosixCompat.h"
++
++// pthread_create wrapper (linked with -Wl,--wrap=pthread_create, see ArchSetup.cmake): newlib/libounce
++// give a thread without attributes 128 KiB of stack; Kodi, FFmpeg and Mesa expect Linux-sized stacks.
++#include <pthread.h>
++
++extern "C" int __real_pthread_create(pthread_t*, const pthread_attr_t*, void* (*)(void*), void*);
++
++extern "C" int __wrap_pthread_create(pthread_t* thread,
++                                     const pthread_attr_t* attr,
++                                     void* (*start)(void*),
++                                     void* arg)
++{
++  if (attr)
++    return __real_pthread_create(thread, attr, start, arg);
++  pthread_attr_t big;
++  pthread_attr_init(&big);
++  pthread_attr_setstacksize(&big, 1u << 20);
++  const int rc = __real_pthread_create(thread, &big, start, arg);
++  pthread_attr_destroy(&big);
++  return rc;
++}
++
++// pthread_detach() wrapper (linked with -Wl,--wrap=pthread_detach, see Install.cmake).
++// libounce links no __syscall_thread_detach, so pthread_detach() always returns ENOSYS and
++// std::thread::detach() throws std::system_error; CThread's autodelete path detaches its own
++// thread inside a noexcept destructor -> std::terminate (rev 8 crash ~30 s after the home screen).
++// Here "detach" hands the thread to a reaper that joins it once it has exited,
++// which is what frees its stack and handle on this platform.
++#include <condition_variable>
++#include <deque>
++#include <mutex>
++
++namespace
++{
++std::mutex g_reapMutex;
++std::condition_variable g_reapCv;
++std::deque<pthread_t> g_reapQueue;
++bool g_reaperRunning = false;
++
++void* Reaper(void*)
++{
++  for (;;)
++  {
++    pthread_t t;
++    {
++      std::unique_lock<std::mutex> lock(g_reapMutex);
++      g_reapCv.wait(lock, [] { return !g_reapQueue.empty(); });
++      t = g_reapQueue.front();
++      g_reapQueue.pop_front();
++    }
++    pthread_join(t, nullptr); // waits until t has really exited; the reaper never queues itself
++  }
++  return nullptr;
++}
++
++void StartReaper()
++{
++  pthread_attr_t attr;
++  pthread_attr_init(&attr);
++  pthread_attr_setstacksize(&attr, 64 * 1024);
++  pthread_t reaper;
++  const int rc = __real_pthread_create(&reaper, &attr, Reaper, nullptr);
++  pthread_attr_destroy(&attr);
++  g_reaperRunning = rc == 0;
++  // Without a reaper, detached threads are never joined (their stacks and handles leak), but
++  // detach still succeeds: failing it would bring back the std::terminate seen in rev 8.
++  Switch2BootLog(rc == 0 ? "reaper-started" : "reaper-pthread_create-failed", rc);
++}
++} // namespace
++
++extern "C" int __wrap_pthread_detach(pthread_t thread)
++{
++  static std::once_flag once;
++  std::call_once(once, StartReaper);
++  if (!g_reaperRunning)
++    return 0;
++  {
++    std::lock_guard<std::mutex> lock(g_reapMutex);
++    g_reapQueue.push_back(thread);
++  }
++  g_reapCv.notify_one();
++  return 0;
++}
++
++// ----------------------------------------------------------------------------------------------
++// fsdev (SD card) POSIX fixes. Measured on hardware (rev 4b-8 bring-up):
++//  * read() at or past end-of-file fails with EIO where POSIX returns 0 (sqlite maps EIO to
++//    SQLITE_CORRUPT/IOERR);
++//  * stat() of a file reopens it by path, and any second open of a file that is open for writing
++//    fails with EIO, so stat()/access() of an open database, log or settings file fails.
++// Wrapped at the newlib reentrant layer (-Wl,--wrap=_read_r,--wrap=_stat_r,--wrap=_open_r,
++// --wrap=_close_r,--wrap=lstat, see cmake/scripts/switch2/Install.cmake), so read(), stat(),
++// access(), fopen()/fread() (newlib __sread) and sqlite's system-call table all go through here.
++// ----------------------------------------------------------------------------------------------
++#include <atomic>
++#include <cerrno>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <fcntl.h>
++#include <reent.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include <switch.h>
++
++extern "C" _ssize_t __real__read_r(struct _reent* r, int fd, void* buf, size_t count);
++extern "C" int __real__open_r(struct _reent* r, const char* path, int flags, int mode);
++extern "C" int __real__close_r(struct _reent* r, int fd);
++extern "C" int __real__stat_r(struct _reent* r, const char* path, struct stat* st);
++extern "C" int __real_lstat(const char* path, struct stat* st);
++
++// Build with -DSWITCH2_STATFAIL_LOG=1 to append every stat()/lstat() failure other than ENOENT to
++// sdmc:/switch/kodi/boot.txt (rev 6 instrument; off by default, it was the bulk of boot.txt).
++#ifndef SWITCH2_STATFAIL_LOG
++#define SWITCH2_STATFAIL_LOG 0
++#endif
++
++namespace
++{
++// fd registry: which newlib fds are fsdev files, opened readable, and under which path. Indexed by
++// fd, lock-free (an fd number is only reused after its close). Lets read() bound itself by the file
++// size and lets stat() of an open file take its size from the open fd instead of a second open.
++constexpr int kMaxTrackedFd = 1024;
++constexpr uint32_t kTracked = 1u << 0;
++constexpr uint32_t kReadable = 1u << 1;
++
++struct FdInfo
++{
++  std::atomic<uint64_t> hash{0};
++  std::atomic<uint32_t> flags{0};
++};
++FdInfo g_fds[kMaxTrackedFd];
++
++uint64_t PathHash(const FsFileSystem* fs, const char* fspath)
++{
++  uint64_t h = 1469598103934665603ULL ^ reinterpret_cast<uintptr_t>(fs);
++  for (const unsigned char* p = reinterpret_cast<const unsigned char*>(fspath); *p; ++p)
++  {
++    h ^= *p;
++    h *= 1099511628211ULL;
++  }
++  return h ? h : 1;
++}
++
++// Resolves `path` to its fsdev file system and fs path (relative paths use fsdev's cwd).
++bool Translate(const char* path, FsFileSystem** fs, char (&fspath)[FS_MAX_PATH])
++{
++  *fs = nullptr;
++  fspath[0] = '\0';
++  const int saved = errno;
++  const bool ok = path && fsdevTranslatePath(path, fs, fspath) == 0 && *fs;
++  errno = saved;
++  return ok;
++}
++
++int FindOpenFd(uint64_t hash)
++{
++  for (int fd = 0; fd < kMaxTrackedFd; ++fd)
++    if ((g_fds[fd].flags.load(std::memory_order_acquire) & kTracked) &&
++        g_fds[fd].hash.load(std::memory_order_relaxed) == hash)
++      return fd;
++  return -1;
++}
++
++#if SWITCH2_STATFAIL_LOG
++std::atomic<int> g_statFailLines{0};
++
++void StatFailLog(const char* what, const char* path, int err, bool recovered)
++{
++  if (g_statFailLines.fetch_add(1) >= 256) // bounded: a hot failing path must not flood the SD
++    return;
++  char line[400];
++  const int n = snprintf(line, sizeof(line), "%s-fail path=%s errno=%d fallback=%d\n", what,
++                         path ? path : "-", err, recovered ? 1 : 0);
++  if (n > 0)
++    Switch2RawAppend("/switch/kodi/boot.txt", line,
++                     static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n) : sizeof(line) - 1);
++}
++#endif
++
++// stat() answer for a path whose fsdev stat failed with EIO (file open for writing in this
++// process): the entry type needs no open; a file's size and times come from our open fd when the
++// registry has one (it has, for anything opened through open()/fopen()), else st_size stays 0.
++bool StatFallback(struct _reent* r, const char* path, struct stat* st)
++{
++  FsFileSystem* fs;
++  char fspath[FS_MAX_PATH];
++  FsDirEntryType type;
++  if (!Translate(path, &fs, fspath) || R_FAILED(fsFsGetEntryType(fs, fspath, &type)))
++    return false;
++  std::memset(st, 0, sizeof(*st));
++  st->st_nlink = 1;
++  if (type != FsDirEntryType_File)
++  {
++    st->st_mode = S_IFDIR | 0755;
++    return true;
++  }
++  st->st_mode = S_IFREG | 0644;
++  const int fd = FindOpenFd(PathHash(fs, fspath));
++  struct stat fst;
++  const int saved = r->_errno;
++  if (fd >= 0 && _fstat_r(r, fd, &fst) == 0 && S_ISREG(fst.st_mode))
++  {
++    *st = fst;
++    st->st_mode |= 0644;
++    if (st->st_nlink == 0)
++      st->st_nlink = 1;
++  }
++  r->_errno = saved;
++  return true;
++}
++} // namespace
++
++extern "C" int Switch2PathIsOpen(const char* path)
++{
++  FsFileSystem* fs;
++  char fspath[FS_MAX_PATH];
++  return Translate(path, &fs, fspath) && FindOpenFd(PathHash(fs, fspath)) >= 0;
++}
++
++extern "C" int __wrap__open_r(struct _reent* r, const char* path, int flags, int mode)
++{
++  const int fd = __real__open_r(r, path, flags, mode);
++  if (fd >= 0 && fd < kMaxTrackedFd)
++  {
++    FsFileSystem* fs;
++    char fspath[FS_MAX_PATH];
++    if (Translate(path, &fs, fspath))
++    {
++      g_fds[fd].hash.store(PathHash(fs, fspath), std::memory_order_relaxed);
++      g_fds[fd].flags.store(kTracked | ((flags & O_ACCMODE) != O_WRONLY ? kReadable : 0),
++                            std::memory_order_release);
++    }
++    else
++      g_fds[fd].flags.store(0, std::memory_order_release);
++  }
++  return fd;
++}
++
++extern "C" int __wrap__close_r(struct _reent* r, int fd)
++{
++  if (fd >= 0 && fd < kMaxTrackedFd)
++    g_fds[fd].flags.store(0, std::memory_order_release);
++  return __real__close_r(r, fd);
++}
++
++// read(): for a readable fsdev file, take the position and size first: at/after EOF return 0 without
++// calling fsdev (whose EOF read fails with EIO, and whose bounce-buffer path would loop), otherwise
++// clamp the count to the bytes that exist. Sockets, romfs and other devices pass straight through.
++extern "C" _ssize_t __wrap__read_r(struct _reent* r, int fd, void* buf, size_t count)
++{
++  if (count != 0 && fd >= 0 && fd < kMaxTrackedFd &&
++      (g_fds[fd].flags.load(std::memory_order_acquire) & kReadable))
++  {
++    const int saved = r->_errno;
++    const _off_t pos = _lseek_r(r, fd, 0, SEEK_CUR);
++    struct stat st;
++    if (pos >= 0 && _fstat_r(r, fd, &st) == 0 && S_ISREG(st.st_mode))
++    {
++      if (pos >= st.st_size)
++      {
++        r->_errno = saved;
++        return 0;
++      }
++      const uint64_t left = static_cast<uint64_t>(st.st_size - pos);
++      if (count > left)
++        count = static_cast<size_t>(left);
++    }
++    r->_errno = saved;
++  }
++  const _ssize_t n = __real__read_r(r, fd, buf, count);
++  if (n < 0 && r->_errno == EIO)
++  {
++    // Untracked fd, or the file shrank under us: keep the rev 5 rule (EIO at/after EOF -> 0).
++    const int saved = r->_errno;
++    const _off_t pos = _lseek_r(r, fd, 0, SEEK_CUR);
++    struct stat st;
++    if (pos >= 0 && _fstat_r(r, fd, &st) == 0 && S_ISREG(st.st_mode) && pos >= st.st_size)
++    {
++      r->_errno = saved;
++      return 0;
++    }
++    r->_errno = saved;
++  }
++  return n;
++}
++
++extern "C" int __wrap__stat_r(struct _reent* r, const char* path, struct stat* st)
++{
++  const int before = r->_errno;
++  const int rc = __real__stat_r(r, path, st);
++  if (rc == 0 || r->_errno != EIO)
++    return rc;
++  const int err = r->_errno;
++  const bool ok = StatFallback(r, path, st);
++#if SWITCH2_STATFAIL_LOG
++  StatFailLog("stat", path, err, ok);
++#endif
++  r->_errno = ok ? before : err;
++  return ok ? 0 : rc;
++}
++
++// lstat() is its own libsysbase entry (it calls the devoptab directly, not _stat_r).
++extern "C" int __wrap_lstat(const char* path, struct stat* st)
++{
++  const int before = errno;
++  const int rc = __real_lstat(path, st);
++  if (rc == 0 || errno != EIO)
++    return rc;
++  const int err = errno;
++  const bool ok = StatFallback(_REENT, path, st);
++#if SWITCH2_STATFAIL_LOG
++  StatFailLog("lstat", path, err, ok);
++#endif
++  errno = ok ? before : err;
++  return ok ? 0 : rc;
++}
++
++// clock_gettime() wrapper (-Wl,--wrap=clock_gettime, see Install.cmake). libounce's
++// __syscall_clock_gettime accepts only CLOCK_REALTIME (1) and CLOCK_MONOTONIC (4); every other id
++// returns EINVAL without touching the timespec, and callers that ignore the return value (Kodi's
++// CurrentHostCounter used CLOCK_MONOTONIC_RAW) then read stack garbage. Map the Linux aliases.
++#include <time.h>
++
++extern "C" int __real_clock_gettime(clockid_t id, struct timespec* ts);
++
++extern "C" int __wrap_clock_gettime(clockid_t id, struct timespec* ts)
++{
++  switch (id)
++  {
++    case CLOCK_REALTIME_COARSE:
++#ifdef CLOCK_REALTIME_ALARM
++    case CLOCK_REALTIME_ALARM:
++#endif
++      id = CLOCK_REALTIME;
++      break;
++    case CLOCK_MONOTONIC_RAW:
++    case CLOCK_MONOTONIC_COARSE:
++    case CLOCK_BOOTTIME:
++#ifdef CLOCK_BOOTTIME_ALARM
++    case CLOCK_BOOTTIME_ALARM:
++#endif
++      id = CLOCK_MONOTONIC;
++      break;
++    default:
++      break;
++  }
++  return __real_clock_gettime(id, ts);
++}
++
++// Implementations behind the Switch 2 compat headers (compat/sys/sysinfo.h, compat/sys/utsname.h).
++
++#include <cstring>
++
++#include <sys/sysinfo.h>
++#include <sys/utsname.h>
++#include <time.h>
++
++#include <switch.h>
++
++extern "C" int sysinfo(struct sysinfo* info)
++{
++  if (!info)
++    return -1;
++  std::memset(info, 0, sizeof(*info));
++  u64 total = 0, used = 0;
++  svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
++  svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
++  info->totalram = total;
++  info->freeram = total > used ? total - used : 0;
++  info->uptime = static_cast<long>(armTicksToNs(armGetSystemTick()) / 1000000000ULL);
++  info->procs = 1;
++  info->mem_unit = 1;
++  return 0;
++}
++
++extern "C" int get_nprocs(void)
++{
++  return 3; // cores available to an application on the console
++}
++
++extern "C" int get_nprocs_conf(void)
++{
++  return 8;
++}
++
++extern "C" int uname(struct utsname* name)
++{
++  if (!name)
++    return -1;
++  std::memset(name, 0, sizeof(*name));
++  std::strncpy(name->sysname, "Horizon", sizeof(name->sysname) - 1);
++  std::strncpy(name->nodename, "switch2", sizeof(name->nodename) - 1);
++  std::strncpy(name->release, "kaiHEN", sizeof(name->release) - 1);
++  std::strncpy(name->version, "libounce", sizeof(name->version) - 1);
++  std::strncpy(name->machine, "aarch64", sizeof(name->machine) - 1);
++  return 0;
++}
++
++// Days from 1970-01-01 to y-m-d in the proleptic Gregorian calendar (Howard Hinnant's algorithm).
++static long long DaysFromCivil(long long y, unsigned m, unsigned d)
++{
++  y -= m <= 2;
++  const long long era = (y >= 0 ? y : y - 399) / 400;
++  const unsigned yoe = static_cast<unsigned>(y - era * 400);
++  const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
++  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
++  return era * 146097 + static_cast<long long>(doe) - 719468;
++}
++
++extern "C" time_t timegm(struct tm* tm)
++{
++  if (!tm)
++    return static_cast<time_t>(-1);
++  // Normalise month overflow like mktime does.
++  long long year = 1900LL + tm->tm_year + tm->tm_mon / 12;
++  int mon = tm->tm_mon % 12;
++  if (mon < 0)
++  {
++    mon += 12;
++    year -= 1;
++  }
++  const long long days = DaysFromCivil(year, static_cast<unsigned>(mon + 1), 1) + (tm->tm_mday - 1);
++  const long long secs = days * 86400LL + tm->tm_hour * 3600LL + tm->tm_min * 60LL + tm->tm_sec;
++  const time_t t = static_cast<time_t>(secs);
++  struct tm norm;
++  if (gmtime_r(&t, &norm))
++    *tm = norm;
++  return t;
++}
++
++// Process APIs newlib declares but the console cannot provide: Kodi only calls them for
++// external players and resource accounting, so they fail with ENOSYS.
++#include <cerrno>
++#include <sys/resource.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++extern "C" int getrusage(int, struct rusage* usage)
++{
++  if (usage)
++    std::memset(usage, 0, sizeof(*usage));
++  return 0;
++}
++
++extern "C" pid_t waitpid(pid_t, int*, int)
++{
++  errno = ECHILD;
++  return -1;
++}
++
++extern "C" int execvp(const char*, char* const[])
++{
++  errno = ENOSYS;
++  return -1;
++}
++
++// No child processes on the console: Kodi's few popen() users (temperature commands,
++// external tools) take their failure path.
++#include <cstdio>
++
++extern "C" FILE* popen(const char*, const char*)
++{
++  errno = ENOSYS;
++  return nullptr;
++}
++
++extern "C" int pclose(FILE*)
++{
++  errno = ECHILD;
++  return -1;
++}
+diff --git a/xbmc/platform/switch2/PosixCompat.h b/xbmc/platform/switch2/PosixCompat.h
+new file mode 100644
+index 0000000..238261d
+--- /dev/null
++++ b/xbmc/platform/switch2/PosixCompat.h
+@@ -0,0 +1,34 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++// Switch 2 file-system helpers implemented in PosixCompat.cpp / CrashHandler.cpp.
++
++#ifdef __cplusplus
++extern "C"
++{
++#endif
++
++// 1 when a file at `path` is open in this process (open()/fopen() fd registry), else 0.
++int Switch2PathIsOpen(const char* path);
++
++// Appends `len` bytes to the sdmc file `fspath` (an fs path such as "/switch/kodi/boot.txt",
++// which must lie under /switch/kodi/) with fs IPC only: no newlib locks, no malloc, no stdio.
++// Returns 0 on success.
++int Switch2RawAppend(const char* fspath, const char* buf, unsigned long len);
++
++// One raw "<ms> <what> <value>" line appended to sdmc:/switch/kodi/boot.txt.
++void Switch2BootLog(const char* what, long long value);
++
++// Arms std::set_terminate and resolves what the native exception handler needs (CrashHandler.cpp).
++void Switch2InstallCrashHandlers(void);
++
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/StartupProbe.cpp b/xbmc/platform/switch2/StartupProbe.cpp
+new file mode 100644
+index 0000000..c5f794d
+--- /dev/null
++++ b/xbmc/platform/switch2/StartupProbe.cpp
+@@ -0,0 +1,234 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++// Switch 2 sqlite set-up, run before Kodi: shared-cache mode (this FS refuses a second open of a
++// file that is open for writing), and sqlite's own error log to sdmc:/switch/kodi/sqlite.log
++// (capped; LOCKED/BUSY, which Kodi's wrapper retries, are not logged). One summary line goes to
++// sdmc:/switch/kodi/boot.txt. Build with -DSWITCH2_STARTUP_PROBE=1 for the rev 4-9 bring-up probe
++// of the FS and sqlite (touches only sdmc:/switch/kodi/probe*.bin|db, removed again).
++
++#include "StartupProbe.h"
++
++#include "PosixCompat.h"
++
++#include <atomic>
++#include <cerrno>
++#include <cstdarg>
++#include <cstdio>
++#include <cstring>
++#include <initializer_list>
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include <sqlite3.h>
++#include <switch.h>
++
++#ifndef SWITCH2_STARTUP_PROBE
++#define SWITCH2_STARTUP_PROBE 0
++#endif
++
++namespace
++{
++// Formats one "<ms> ..." line and appends it with the shared raw writer (Switch2RawAppend), the
++// single writer path for boot.txt; `file` is an fs path under /switch/kodi/.
++void Line(const char* file, const char* fmt, ...)
++{
++  char line[512];
++  int n = snprintf(line, sizeof(line), "%llu ",
++                   static_cast<unsigned long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL));
++  if (n < 0)
++    return;
++  va_list ap;
++  va_start(ap, fmt);
++  const int m = vsnprintf(line + n, sizeof(line) - static_cast<size_t>(n) - 1, fmt, ap);
++  va_end(ap);
++  if (m > 0)
++    n += m;
++  if (n > static_cast<int>(sizeof(line)) - 2)
++    n = static_cast<int>(sizeof(line)) - 2;
++  line[n++] = '\n';
++  Switch2RawAppend(file, line, static_cast<unsigned long>(n));
++}
++
++constexpr const char* BOOT = "/switch/kodi/boot.txt";
++constexpr const char* SQLLOG = "/switch/kodi/sqlite.log";
++
++std::atomic<int> g_sqliteLogLines{0};
++
++void SqliteLog(void*, int code, const char* msg)
++{
++  // LOCKED/BUSY are retried by Kodi's wrapper (sqlitedataset.cpp) and would flood the log.
++  const int primary = code & 0xff;
++  if (primary == SQLITE_LOCKED || primary == SQLITE_BUSY)
++    return;
++  if (g_sqliteLogLines.fetch_add(1) >= 200)
++    return;
++  Line(SQLLOG, "sqlite rc=%d %s", code, msg ? msg : "");
++}
++
++#if SWITCH2_STARTUP_PROBE
++
++long long FdSize(int fd)
++{
++  struct stat st;
++  return fstat(fd, &st) == 0 ? static_cast<long long>(st.st_size) : -1;
++}
++
++void RawFileProbe()
++{
++  const char* path = "/switch/kodi/probe.bin";
++  unlink(path);
++  char page[4096];
++  int fd = open(path, O_RDWR | O_CREAT, 0644);
++  Line(BOOT, "fs open-create fd=%d errno=%d", fd, fd < 0 ? errno : 0);
++  if (fd < 0)
++    return;
++  memset(page, 'B', sizeof(page));
++  off_t o = lseek(fd, 4096, SEEK_SET);
++  ssize_t w = write(fd, page, sizeof(page));
++  Line(BOOT, "fs write-past-eof lseek=%lld write=%zd errno=%d size=%lld", (long long)o, w, w < 0 ? errno : 0, FdSize(fd));
++  memset(page, 'A', sizeof(page));
++  o = lseek(fd, 0, SEEK_SET);
++  w = write(fd, page, sizeof(page));
++  Line(BOOT, "fs write-at-0 lseek=%lld write=%zd size=%lld", (long long)o, w, FdSize(fd));
++  char buf[16] = {};
++  o = lseek(fd, 4096, SEEK_SET);
++  ssize_t r = read(fd, buf, sizeof(buf));
++  Line(BOOT, "fs read-4096 lseek=%lld read=%zd first='%c'", (long long)o, r, r > 0 ? buf[0] : '?');
++  o = lseek(fd, 8192, SEEK_SET);
++  r = read(fd, buf, sizeof(buf));
++  Line(BOOT, "fs read-at-eof lseek=%lld read=%zd errno=%d", (long long)o, r, r < 0 ? errno : 0);
++  // Linux returns 0 for a read past EOF; sqlite relies on that (journal header probe).
++  errno = 0;
++  o = lseek(fd, 12288, SEEK_SET);
++  r = read(fd, buf, sizeof(buf));
++  Line(BOOT, "fs read-past-eof lseek=%lld read=%zd errno=%d", (long long)o, r, r < 0 ? errno : 0);
++  int t = ftruncate(fd, 4096);
++  Line(BOOT, "fs ftruncate-4096 rc=%d size=%lld", t, FdSize(fd));
++  int s = fsync(fd);
++  Line(BOOT, "fs fsync rc=%d errno=%d", s, s < 0 ? errno : 0);
++  close(fd);
++  struct stat st;
++  int st_rc = stat(path, &st);
++  Line(BOOT, "fs stat-after-close rc=%d size=%lld", st_rc, st_rc == 0 ? (long long)st.st_size : -1LL);
++  fd = open(path, O_RDWR);
++  Line(BOOT, "fs reopen-rdwr fd=%d size=%lld", fd, fd >= 0 ? FdSize(fd) : -1LL);
++  if (fd >= 0)
++    close(fd);
++  // Fresh 0-byte files: fstat right after create, and a sqlite-journal-like name.
++  for (const char* p : {"/switch/kodi/probe-fresh.bin", "/switch/kodi/probe.db-journal"})
++  {
++    unlink(p);
++    errno = 0;
++    int f2 = open(p, O_RDWR | O_CREAT, 0644);
++    struct stat s2;
++    errno = 0;
++    int frc = f2 >= 0 ? fstat(f2, &s2) : -2;
++    int ferr = errno;
++    errno = 0;
++    int src = stat(p, &s2);
++    Line(BOOT, "fs fresh %s fd=%d fstat=%d errno=%d stat=%d errno=%d", p, f2, frc, ferr, src, errno);
++    if (f2 >= 0)
++      close(f2);
++    unlink(p);
++  }
++  // Second open of a file that is open O_RDWR (expected refused on this FS).
++  {
++    const char* p = "/switch/kodi/probe-twice.bin";
++    unlink(p);
++    int a = open(p, O_RDWR | O_CREAT, 0644);
++    errno = 0;
++    int b = open(p, O_RDWR);
++    int berr = errno;
++    errno = 0;
++    int c = open(p, O_RDONLY);
++    Line(BOOT, "fs twice first=%d second-rdwr=%d errno=%d second-rdonly=%d errno=%d", a, b, berr, c, errno);
++    if (c >= 0)
++      close(c);
++    if (b >= 0)
++      close(b);
++    if (a >= 0)
++      close(a);
++    unlink(p);
++  }
++  int missing = open("/switch/kodi/probe-missing.bin", O_RDWR);
++  Line(BOOT, "fs open-missing-no-creat fd=%d errno=%d", missing, missing < 0 ? errno : 0);
++  if (missing >= 0)
++    close(missing);
++  Line(BOOT, "fs unlink rc=%d", unlink(path));
++}
++
++void SqliteProbe()
++{
++  const char* path = "/switch/kodi/probe.db";
++  // Leftovers from a probe that crashed would make every later probe report BUSY.
++  rmdir("/switch/kodi/probe.db.lock");
++  unlink("/switch/kodi/probe.db-journal");
++  unlink(path);
++  sqlite3* db = nullptr;
++  int rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
++  Line(BOOT, "sql open rc=%d vfs=%s", rc, sqlite3_vfs_find(nullptr) ? sqlite3_vfs_find(nullptr)->zName : "?");
++  if (rc == SQLITE_OK)
++  {
++    // Same order as Kodi's create path (SqliteDatabase::exists, Database.cpp Connect), then a table.
++    const char* steps[] = {"PRAGMA empty_result_callbacks=ON", "SELECT * FROM sqlite_master",
++                           "PRAGMA page_size=4096", "PRAGMA default_cache_size=4096",
++                           "CREATE TABLE t(a INTEGER, b TEXT)", "INSERT INTO t VALUES(1,'one')",
++                           "PRAGMA cache_size=4096", "PRAGMA synchronous='NORMAL'",
++                           "SELECT count(*) FROM t"};
++    for (const char* sql : steps)
++    {
++      char* err = nullptr;
++      rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
++      Line(BOOT, "sql '%s' rc=%d ext=%d syserr=%d %s", sql, rc, sqlite3_extended_errcode(db),
++           sqlite3_system_errno(db), err ? err : "");
++      sqlite3_free(err);
++    }
++  }
++  // Second connection to the same open database (shared cache on).
++  {
++    sqlite3* db2 = nullptr;
++    int rc2o = sqlite3_open_v2(path, &db2, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
++    char* e2 = nullptr;
++    int rc2s = rc2o == SQLITE_OK ? sqlite3_exec(db2, "SELECT count(*) FROM t", nullptr, nullptr, &e2) : -1;
++    Line(BOOT, "sql second-connection open rc=%d select rc=%d %s", rc2o, rc2s, e2 ? e2 : "");
++    sqlite3_free(e2);
++    sqlite3_close(db2);
++  }
++  sqlite3_close(db);
++  struct stat st;
++  int st_rc = stat(path, &st);
++  Line(BOOT, "sql file-size-after-close rc=%d size=%lld", st_rc, st_rc == 0 ? (long long)st.st_size : -1LL);
++  db = nullptr;
++  rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, nullptr);
++  char* err = nullptr;
++  int rc2 = rc == SQLITE_OK ? sqlite3_exec(db, "SELECT count(*) FROM t", nullptr, nullptr, &err) : -1;
++  Line(BOOT, "sql reopen rc=%d select rc=%d %s", rc, rc2, err ? err : "");
++  sqlite3_free(err);
++  sqlite3_close(db);
++  Line(BOOT, "sql unlink rc=%d", unlink(path));
++}
++#endif // SWITCH2_STARTUP_PROBE
++} // namespace
++
++void Switch2StartupProbe()
++{
++  // Must run before any other sqlite call (sqlite3_config is only valid before initialisation).
++  const int logRc = sqlite3_config(SQLITE_CONFIG_LOG, SqliteLog, nullptr);
++  // This FS refuses a second open of a file that is open for writing (rev 7 flight: Kodi's second
++  // connection to Addons33.db got SQLITE_CANTOPEN). Shared-cache mode makes all connections to one
++  // database file in this process share a single pager and file handle.
++  const int sharedRc = sqlite3_enable_shared_cache(1);
++#if SWITCH2_STARTUP_PROBE
++  RawFileProbe();
++  SqliteProbe();
++#endif
++  Line(BOOT, "sqlite %s threadsafe=%d config_log=%d shared_cache=%d probe=%d", sqlite3_libversion(),
++       sqlite3_threadsafe(), logRc, sharedRc, SWITCH2_STARTUP_PROBE);
++}
+diff --git a/xbmc/platform/switch2/StartupProbe.h b/xbmc/platform/switch2/StartupProbe.h
+new file mode 100644
+index 0000000..53d2fc6
+--- /dev/null
++++ b/xbmc/platform/switch2/StartupProbe.h
+@@ -0,0 +1,8 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++#pragma once
++
++// Switch 2 bring-up instrument: raw file-I/O and sqlite self-test before Kodi starts.
++void Switch2StartupProbe();
+diff --git a/xbmc/platform/switch2/SystemInfoSwitch2.cpp b/xbmc/platform/switch2/SystemInfoSwitch2.cpp
+new file mode 100644
+index 0000000..ac70426
+--- /dev/null
++++ b/xbmc/platform/switch2/SystemInfoSwitch2.cpp
+@@ -0,0 +1,89 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++// Switch 2 implementations of Kodi's per-platform system-information factories:
++// CPU info, GPU info and memory utilities.
++
++#include "platform/posix/CPUInfoPosix.h"
++#include "platform/posix/GPUInfoPosix.h"
++#include "utils/MemUtils.h"
++#include "utils/Temperature.h"
++
++#include <cstdlib>
++#include <memory>
++
++#include <switch.h>
++
++namespace
++{
++class CCPUInfoSwitch2 : public CCPUInfoPosix
++{
++public:
++  CCPUInfoSwitch2()
++  {
++    m_cpuCount = 3; // cores scheduled for an application
++    m_cpuModel = "ARM Cortex-A78C";
++    m_cpuVendor = "ARM";
++    m_cpuHardware = "Nintendo Switch 2";
++    m_cpuFeatures |= CPU_FEATURE_NEON;
++  }
++
++  bool SupportsCPUUsage() const override { return false; }
++  int GetUsedPercentage() override { return 0; }
++  float GetCPUFrequency() override { return 0.0f; }
++  bool GetTemperature(CTemperature& temperature) override { return false; }
++};
++
++class CGPUInfoSwitch2 : public CGPUInfoPosix
++{
++public:
++  bool GetGPUPlatformTemperature(CTemperature& temperature) const override { return false; }
++};
++} // namespace
++
++std::shared_ptr<CCPUInfo> CCPUInfo::GetCPUInfo()
++{
++  return std::make_shared<CCPUInfoSwitch2>();
++}
++
++std::unique_ptr<CGPUInfo> CGPUInfo::GetGPUInfo()
++{
++  return std::make_unique<CGPUInfoSwitch2>();
++}
++
++namespace KODI
++{
++namespace MEMORY
++{
++
++void* AlignedMalloc(size_t s, size_t alignTo)
++{
++  // aligned_alloc needs the size to be a multiple of the alignment.
++  const size_t size = (s + alignTo - 1) / alignTo * alignTo;
++  return std::aligned_alloc(alignTo, size ? size : alignTo);
++}
++
++void AlignedFree(void* p)
++{
++  std::free(p);
++}
++
++void GetMemoryStatus(MemoryStatus* buffer)
++{
++  if (!buffer)
++    return;
++  u64 total = 0, used = 0;
++  svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
++  svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
++  buffer->totalPhys = total;
++  buffer->availPhys = total > used ? total - used : 0;
++  buffer->memoryLoad = total ? static_cast<unsigned int>(used * 100 / total) : 0;
++}
++
++} // namespace MEMORY
++} // namespace KODI
+diff --git a/xbmc/platform/switch2/compat/mntent.h b/xbmc/platform/switch2/compat/mntent.h
+new file mode 100644
+index 0000000..35421b9
+--- /dev/null
++++ b/xbmc/platform/switch2/compat/mntent.h
+@@ -0,0 +1,25 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++// Switch 2 compat: <mntent.h>. There is no mount table; every lookup finds nothing.
++#pragma once
++#include <stdio.h>
++#ifdef __cplusplus
++extern "C" {
++#endif
++struct mntent
++{
++  char* mnt_fsname;
++  char* mnt_dir;
++  char* mnt_type;
++  char* mnt_opts;
++  int mnt_freq;
++  int mnt_passno;
++};
++static inline FILE* setmntent(const char*, const char*) { return 0; }
++static inline struct mntent* getmntent(FILE*) { return 0; }
++static inline int endmntent(FILE*) { return 1; }
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/compat/switch2_posix.h b/xbmc/platform/switch2/compat/switch2_posix.h
+new file mode 100644
+index 0000000..a28377f
+--- /dev/null
++++ b/xbmc/platform/switch2/compat/switch2_posix.h
+@@ -0,0 +1,27 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++// Force-included into every Kodi source on Switch 2 (see cmake/scripts/switch2/ArchSetup.cmake).
++// Fills small gaps between newlib and what Kodi expects from glibc. Keep it minimal.
++#pragma once
++
++#include <sys/types.h>
++// newlib's <sys/types.h> does "#define quad quad_t" under __BSD_VISIBLE; Kodi has members named quad.
++#undef quad
++
++#include <alloca.h>
++#include <stdio.h>
++#include <time.h>
++
++// newlib only exports the reserved-name variant. (Not getline: a macro would break std::getline.)
++#define getdelim __getdelim
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++// Inverse of gmtime(); implemented in xbmc/platform/switch2/PosixCompat.cpp.
++time_t timegm(struct tm* tm);
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/compat/sys/mman.h b/xbmc/platform/switch2/compat/sys/mman.h
+new file mode 100644
+index 0000000..a967447
+--- /dev/null
++++ b/xbmc/platform/switch2/compat/sys/mman.h
+@@ -0,0 +1,36 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++// Switch 2 compat: <sys/mman.h>. newlib has no mmap; these fail with ENOSYS so Kodi's
++// mmap users (shared-memory and DMA buffers, unused on this platform) take their error paths.
++#pragma once
++#include <errno.h>
++#include <stddef.h>
++#include <sys/types.h>
++#define PROT_NONE 0x0
++#define PROT_READ 0x1
++#define PROT_WRITE 0x2
++#define PROT_EXEC 0x4
++#define MAP_SHARED 0x01
++#define MAP_PRIVATE 0x02
++#define MAP_FIXED 0x10
++#define MAP_ANONYMOUS 0x20
++#define MAP_ANON MAP_ANONYMOUS
++#define MAP_FAILED ((void*)-1)
++#ifdef __cplusplus
++extern "C" {
++#endif
++static inline void* mmap(void*, size_t, int, int, int, off_t)
++{
++  errno = ENOSYS;
++  return MAP_FAILED;
++}
++static inline int munmap(void*, size_t)
++{
++  errno = ENOSYS;
++  return -1;
++}
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/compat/sys/sysinfo.h b/xbmc/platform/switch2/compat/sys/sysinfo.h
+new file mode 100644
+index 0000000..5cc2828
+--- /dev/null
++++ b/xbmc/platform/switch2/compat/sys/sysinfo.h
+@@ -0,0 +1,30 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++// Switch 2 compat: Linux <sys/sysinfo.h>. sysinfo() reports process memory from svcGetInfo.
++#pragma once
++#ifdef __cplusplus
++extern "C" {
++#endif
++struct sysinfo
++{
++  long uptime;
++  unsigned long loads[3];
++  unsigned long totalram;
++  unsigned long freeram;
++  unsigned long sharedram;
++  unsigned long bufferram;
++  unsigned long totalswap;
++  unsigned long freeswap;
++  unsigned short procs;
++  unsigned long totalhigh;
++  unsigned long freehigh;
++  unsigned int mem_unit;
++};
++int sysinfo(struct sysinfo* info);
++int get_nprocs(void);
++int get_nprocs_conf(void);
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/compat/sys/utsname.h b/xbmc/platform/switch2/compat/sys/utsname.h
+new file mode 100644
+index 0000000..f0f05a8
+--- /dev/null
++++ b/xbmc/platform/switch2/compat/sys/utsname.h
+@@ -0,0 +1,21 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++// Switch 2 compat: <sys/utsname.h>.
++#pragma once
++#ifdef __cplusplus
++extern "C" {
++#endif
++struct utsname
++{
++  char sysname[65];
++  char nodename[65];
++  char release[65];
++  char version[65];
++  char machine[65];
++};
++int uname(struct utsname* name);
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/dlfcn.h b/xbmc/platform/switch2/dlfcn.h
+new file mode 100644
+index 0000000..5692bd7
+--- /dev/null
++++ b/xbmc/platform/switch2/dlfcn.h
+@@ -0,0 +1,31 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++// Switch 2 has no dynamic loader. These stubs make every dlopen fail cleanly, so Kodi's
++// optional shared modules (binary add-ons, libdvdnav, SSE4 helpers) report "not available".
++
++#define RTLD_LAZY 0x0001
++#define RTLD_NOW 0x0002
++#define RTLD_GLOBAL 0x0100
++#define RTLD_LOCAL 0x0000
++#define RTLD_DEFAULT ((void*)0)
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++void* dlopen(const char* file, int mode);
++void* dlsym(void* handle, const char* name);
++int dlclose(void* handle);
++char* dlerror(void);
++
++#ifdef __cplusplus
++}
++#endif
+diff --git a/xbmc/platform/switch2/dvdread_bswap.h b/xbmc/platform/switch2/dvdread_bswap.h
+new file mode 100644
+index 0000000..2267c57
+--- /dev/null
++++ b/xbmc/platform/switch2/dvdread_bswap.h
+@@ -0,0 +1,15 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++// Force-included into libdvdread on Switch 2: its bswap.h has no branch for newlib/AArch64.
++// Defining the guard first makes bswap.h a no-op; the target is little-endian.
++#pragma once
++#define LIBDVDREAD_BSWAP_H 1
++#define B2N_16(x) x = __builtin_bswap16(x)
++#define B2N_32(x) x = __builtin_bswap32(x)
++#define B2N_64(x) x = __builtin_bswap64(x)
+diff --git a/xbmc/platform/switch2/main.cpp b/xbmc/platform/switch2/main.cpp
+new file mode 100644
+index 0000000..88f73de
+--- /dev/null
++++ b/xbmc/platform/switch2/main.cpp
+@@ -0,0 +1,116 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++// Entry point of the Switch 2 NRO. Brings up the console services Kodi needs
++// (sockets, HID, audio, time), points Kodi at sdmc:/switch/kodi and runs it.
++
++#include "application/AppEnvironment.h"
++#include "application/AppParamParser.h"
++#include "platform/xbmc.h"
++#include "platform/switch2/PosixCompat.h"
++#include "platform/switch2/StartupProbe.h"
++
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <dirent.h>
++#include <string>
++#include <locale.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include <switch.h>
++
++namespace
++{
++// Device-qualified for mkdir/chdir (makes sdmc the default device); Kodi itself gets KODI_HOME.
++constexpr const char* KODI_ROOT = "sdmc:/switch/kodi";
++// Kodi and sqlite only treat paths starting with "/" as absolute (CURL::IsFullPath, unixFullPathname).
++constexpr const char* KODI_HOME = "/switch/kodi";
++
++void BringUpServices()
++{
++  // Leave the CPU at the title's setting; ask applet for focus events so HOME suspends us cleanly.
++  appletSetFocusHandlingMode(AppletFocusHandlingMode_SuspendHomeSleepNotify);
++  // Delay a HOME->Close exit (15 s limit) so appletMainLoop() reports it and Kodi saves its state.
++  appletLockExit();
++  // Every exit path (incl. exit() deep inside Kodi) must unlock before the process ends (applet.h).
++  atexit([] { appletUnlockExit(); });
++
++  SocketInitConfig sockCfg = *socketGetDefaultInitConfig();
++  sockCfg.tcp_tx_buf_size = 0x40000;
++  sockCfg.tcp_rx_buf_size = 0x80000;
++  sockCfg.tcp_tx_buf_max_size = 0x100000;
++  sockCfg.tcp_rx_buf_max_size = 0x200000;
++  sockCfg.sb_efficiency = 8;
++  socketInitialize(&sockCfg);
++
++  // Mirror stdout/stderr to nxlink when hbmenu's NetLoader started us.
++  nxlinkStdio();
++}
++
++void TearDownServices()
++{
++  socketExit();
++}
++// One flushed line per stage, before Kodi's own log exists (CLog starts in CApplication::Create).
++// Same raw writer as every other boot.txt line (PosixCompat.h): one writer path, serialised.
++void BootMark(const char* what, int value = 0)
++{
++  Switch2BootLog(what, value);
++}
++
++// Only one Kodi process can exist, so any sqlite dot-file lock left by a crash is stale.
++void ClearStaleDbLocks()
++{
++  const std::string dir = "sdmc:/switch/kodi/.kodi/userdata/Database";
++  DIR* d = opendir(dir.c_str());
++  if (!d)
++    return;
++  int removed = 0;
++  while (dirent* e = readdir(d))
++  {
++    const size_t len = std::strlen(e->d_name);
++    if (len > 5 && std::strcmp(e->d_name + len - 5, ".lock") == 0)
++      removed += rmdir((dir + "/" + e->d_name).c_str()) == 0;
++  }
++  closedir(d);
++  BootMark("stale-db-locks-removed", removed);
++}
++} // namespace
++
++int main(int argc, char* argv[])
++{
++  // First: crash.txt diagnostics for native exceptions, std::terminate and abort (CrashHandler.cpp).
++  Switch2InstallCrashHandlers();
++  BringUpServices();
++
++  mkdir(KODI_ROOT, 0777);
++  chdir(KODI_ROOT);
++  // Must be set before CAppEnvironment::SetUp: InitDirectoriesLinux derives special://home from
++  // $HOME (SettingsComponent.cpp), so user data lands in sdmc:/switch/kodi/.kodi.
++  setenv("HOME", KODI_HOME, 1);
++  // special://xbmcbin: /proc/self/exe does not exist here.
++  setenv("KODI_BIN_HOME", KODI_HOME, 1);
++  setlocale(LC_NUMERIC, "C");
++  BootMark("main-entered");
++  ClearStaleDbLocks();
++  Switch2StartupProbe();
++
++  CAppParamParser appParamParser;
++  appParamParser.Parse(argv, argc);
++
++  CAppEnvironment::SetUp(appParamParser.GetAppParams());
++  BootMark("xbmc-run-start");
++  int status = XBMC_Run(true);
++  BootMark("xbmc-run-returned", status);
++  CAppEnvironment::TearDown();
++
++  TearDownServices();
++  return status;
++}
+diff --git a/xbmc/platform/switch2/network/CMakeLists.txt b/xbmc/platform/switch2/network/CMakeLists.txt
+new file mode 100644
+index 0000000..8c9a922
+--- /dev/null
++++ b/xbmc/platform/switch2/network/CMakeLists.txt
+@@ -0,0 +1,4 @@
++set(SOURCES NetworkSwitch2.cpp)
++set(HEADERS NetworkSwitch2.h)
++
++core_add_library(platform_switch2_network)
+diff --git a/xbmc/platform/switch2/network/NetworkSwitch2.cpp b/xbmc/platform/switch2/network/NetworkSwitch2.cpp
+new file mode 100644
+index 0000000..490f435
+--- /dev/null
++++ b/xbmc/platform/switch2/network/NetworkSwitch2.cpp
+@@ -0,0 +1,105 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "NetworkSwitch2.h"
++
++#include <cstring>
++
++#include <arpa/inet.h>
++#include <netinet/in.h>
++#include <sys/socket.h>
++#include <switch.h>
++
++namespace
++{
++std::string Ipv4ToString(u32 addr)
++{
++  struct in_addr in;
++  in.s_addr = addr;
++  char buf[INET_ADDRSTRLEN] = {};
++  inet_ntop(AF_INET, &in, buf, sizeof(buf));
++  return buf;
++}
++
++struct IpConfig
++{
++  bool ok = false;
++  u32 ip = 0, mask = 0, gateway = 0, dns1 = 0, dns2 = 0;
++};
++
++IpConfig QueryIpConfig()
++{
++  IpConfig cfg;
++  cfg.ok = R_SUCCEEDED(nifmGetCurrentIpConfigInfo(&cfg.ip, &cfg.mask, &cfg.gateway, &cfg.dns1,
++                                                  &cfg.dns2));
++  return cfg;
++}
++} // namespace
++
++std::unique_ptr<CNetworkBase> CNetworkBase::GetNetwork()
++{
++  return std::make_unique<CNetworkSwitch2>();
++}
++
++bool CNetworkInterfaceSwitch2::IsConnected() const
++{
++  // The console's LAN has no internet, so nifm's internet status never reports Connected;
++  // having an IPv4 address is what Kodi needs for local network sources.
++  IpConfig cfg = QueryIpConfig();
++  return cfg.ok && cfg.ip != 0;
++}
++
++void CNetworkInterfaceSwitch2::GetMacAddressRaw(char rawMac[6]) const
++{
++  std::memset(rawMac, 0, 6);
++}
++
++std::string CNetworkInterfaceSwitch2::GetCurrentIPAddress() const
++{
++  IpConfig cfg = QueryIpConfig();
++  return cfg.ok ? Ipv4ToString(cfg.ip) : "";
++}
++
++std::string CNetworkInterfaceSwitch2::GetCurrentNetmask() const
++{
++  IpConfig cfg = QueryIpConfig();
++  return cfg.ok ? Ipv4ToString(cfg.mask) : "";
++}
++
++std::string CNetworkInterfaceSwitch2::GetCurrentDefaultGateway() const
++{
++  IpConfig cfg = QueryIpConfig();
++  return cfg.ok ? Ipv4ToString(cfg.gateway) : "";
++}
++
++CNetworkSwitch2::CNetworkSwitch2()
++{
++  m_nifm = R_SUCCEEDED(nifmInitialize(NifmServiceType_User));
++  m_interfaces.push_back(&m_interface);
++}
++
++CNetworkSwitch2::~CNetworkSwitch2()
++{
++  m_interfaces.clear();
++  if (m_nifm)
++    nifmExit();
++}
++
++std::vector<std::string> CNetworkSwitch2::GetNameServers()
++{
++  std::vector<std::string> servers;
++  IpConfig cfg = QueryIpConfig();
++  if (cfg.ok)
++  {
++    if (cfg.dns1)
++      servers.push_back(Ipv4ToString(cfg.dns1));
++    if (cfg.dns2)
++      servers.push_back(Ipv4ToString(cfg.dns2));
++  }
++  return servers;
++}
+diff --git a/xbmc/platform/switch2/network/NetworkSwitch2.h b/xbmc/platform/switch2/network/NetworkSwitch2.h
+new file mode 100644
+index 0000000..042ed07
+--- /dev/null
++++ b/xbmc/platform/switch2/network/NetworkSwitch2.h
+@@ -0,0 +1,44 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++#include "network/Network.h"
++
++#include <string>
++#include <vector>
++
++// The console has one network interface; nifm reports its state and IPv4 configuration.
++class CNetworkInterfaceSwitch2 : public CNetworkInterface
++{
++public:
++  bool IsEnabled() const override { return true; }
++  bool IsConnected() const override;
++  std::string GetMacAddress() const override { return "00:00:00:00:00:00"; }
++  void GetMacAddressRaw(char rawMac[6]) const override;
++  bool GetHostMacAddress(unsigned long host, std::string& mac) const override { return false; }
++  std::string GetCurrentIPAddress() const override;
++  std::string GetCurrentNetmask() const override;
++  std::string GetCurrentDefaultGateway() const override;
++};
++
++class CNetworkSwitch2 : public CNetworkBase
++{
++public:
++  CNetworkSwitch2();
++  ~CNetworkSwitch2() override;
++
++  std::vector<CNetworkInterface*>& GetInterfaceList() override { return m_interfaces; }
++  bool PingHost(unsigned long host, unsigned int timeout_ms = 2000) override { return false; }
++  std::vector<std::string> GetNameServers() override;
++
++private:
++  CNetworkInterfaceSwitch2 m_interface;
++  std::vector<CNetworkInterface*> m_interfaces;
++  bool m_nifm = false;
++};
+diff --git a/xbmc/platform/switch2/storage/CMakeLists.txt b/xbmc/platform/switch2/storage/CMakeLists.txt
+new file mode 100644
+index 0000000..357e2ed
+--- /dev/null
++++ b/xbmc/platform/switch2/storage/CMakeLists.txt
+@@ -0,0 +1,4 @@
++set(SOURCES Switch2StorageProvider.cpp)
++set(HEADERS Switch2StorageProvider.h)
++
++core_add_library(platform_switch2_storage)
+diff --git a/xbmc/platform/switch2/storage/Switch2StorageProvider.cpp b/xbmc/platform/switch2/storage/Switch2StorageProvider.cpp
+new file mode 100644
+index 0000000..d52ce46
+--- /dev/null
++++ b/xbmc/platform/switch2/storage/Switch2StorageProvider.cpp
+@@ -0,0 +1,42 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "Switch2StorageProvider.h"
++
++#include "MediaSource.h"
++#include "utils/StringUtils.h"
++
++#include <sys/statvfs.h>
++
++std::unique_ptr<IStorageProvider> IStorageProvider::CreateInstance()
++{
++  return std::make_unique<CSwitch2StorageProvider>();
++}
++
++void CSwitch2StorageProvider::GetLocalDrives(VECSOURCES& localDrives)
++{
++  CMediaSource share;
++  share.strPath = "/"; // the SD card (sdmc is the default device)
++  share.strName = "SD card";
++  share.m_ignore = true;
++  share.m_iDriveType = CMediaSource::SOURCE_TYPE_LOCAL;
++  localDrives.push_back(share);
++}
++
++std::vector<std::string> CSwitch2StorageProvider::GetDiskUsage()
++{
++  std::vector<std::string> result;
++  struct statvfs fs;
++  if (statvfs("/", &fs) == 0)
++  {
++    const double total = static_cast<double>(fs.f_blocks) * fs.f_frsize / (1024.0 * 1024 * 1024);
++    const double avail = static_cast<double>(fs.f_bavail) * fs.f_frsize / (1024.0 * 1024 * 1024);
++    result.push_back(StringUtils::Format("SD card: {:.1f} GB free of {:.1f} GB", avail, total));
++  }
++  return result;
++}
+diff --git a/xbmc/platform/switch2/storage/Switch2StorageProvider.h b/xbmc/platform/switch2/storage/Switch2StorageProvider.h
+new file mode 100644
+index 0000000..1b3ebaf
+--- /dev/null
++++ b/xbmc/platform/switch2/storage/Switch2StorageProvider.h
+@@ -0,0 +1,24 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++#include "storage/IStorageProvider.h"
++
++// The SD card is the one local drive; there is nothing removable to watch.
++class CSwitch2StorageProvider : public IStorageProvider
++{
++public:
++  void Initialize() override {}
++  void Stop() override {}
++  void GetLocalDrives(VECSOURCES& localDrives) override;
++  void GetRemovableDrives(VECSOURCES& removableDrives) override {}
++  bool Eject(const std::string& mountpath) override { return false; }
++  std::vector<std::string> GetDiskUsage() override;
++  bool PumpDriveChangeEvents(IStorageEventsCallback* callback) override { return false; }
++};
+diff --git a/xbmc/utils/TimeUtils.cpp b/xbmc/utils/TimeUtils.cpp
+index 95c5069..89d284c 100644
+--- a/xbmc/utils/TimeUtils.cpp
++++ b/xbmc/utils/TimeUtils.cpp
+@@ -34,7 +34,9 @@ int64_t CurrentHostCounter(void)
+   return( (int64_t)PerformanceCount.QuadPart );
+ #else
+   struct timespec now;
+-#if defined(CLOCK_MONOTONIC_RAW) && !defined(TARGET_ANDROID)
++// Switch 2: libounce's clock_gettime knows only CLOCK_REALTIME and CLOCK_MONOTONIC; any other id
++// fails with EINVAL and leaves `now` uninitialised (rev 11: the media clock raced ~5x).
++#if defined(CLOCK_MONOTONIC_RAW) && !defined(TARGET_ANDROID) && !defined(TARGET_SWITCH2)
+   clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+ #else
+   clock_gettime(CLOCK_MONOTONIC, &now);
+diff --git a/xbmc/windowing/switch2/CMakeLists.txt b/xbmc/windowing/switch2/CMakeLists.txt
+new file mode 100644
+index 0000000..ce95015
+--- /dev/null
++++ b/xbmc/windowing/switch2/CMakeLists.txt
+@@ -0,0 +1,4 @@
++set(SOURCES WinSystemSwitch2GLESContext.cpp)
++set(HEADERS WinSystemSwitch2GLESContext.h)
++
++core_add_library(windowing_switch2)
+diff --git a/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.cpp b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.cpp
+new file mode 100644
+index 0000000..e20e5b5
+--- /dev/null
++++ b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.cpp
+@@ -0,0 +1,342 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "WinSystemSwitch2GLESContext.h"
++
++#include "ServiceBroker.h"
++#include "application/AppInboundProtocol.h"
++#include "cores/RetroPlayer/process/RPProcessInfo.h"
++#include "cores/RetroPlayer/rendering/VideoRenderers/RPRendererOpenGLES.h"
++#include "cores/VideoPlayer/DVDCodecs/DVDFactoryCodec.h"
++#include "cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.h"
++#include "cores/VideoPlayer/VideoRenderers/RenderFactory.h"
++#include "rendering/gles/ScreenshotSurfaceGLES.h"
++#include "guilib/DispResource.h"
++#include "input/keyboard/XBMC_keysym.h"
++#include "settings/DisplaySettings.h"
++#include "threads/SingleLock.h"
++#include "utils/log.h"
++#include "windowing/GraphicContext.h"
++#include "windowing/Resolution.h"
++#include "windowing/WindowSystemFactory.h"
++#include "windowing/XBMC_events.h"
++
++#include <algorithm>
++#include <iterator>
++#include <cstring>
++
++using namespace KODI::WINDOWING::SWITCH2;
++
++namespace
++{
++struct PadKey
++{
++  uint64_t button;
++  uint32_t sym;
++};
++
++// Kodi's default keyboard keymap gives these keys their usual meaning.
++// A = select, B = back, X = context menu, Y = info, +/- = menu/OSD,
++// L/R = page/skip, ZL/ZR = rewind/fast-forward, sticks double the d-pad.
++constexpr PadKey kPadKeys[] = {
++    {HidNpadButton_Up | HidNpadButton_StickLUp, XBMCK_UP},
++    {HidNpadButton_Down | HidNpadButton_StickLDown, XBMCK_DOWN},
++    {HidNpadButton_Left | HidNpadButton_StickLLeft, XBMCK_LEFT},
++    {HidNpadButton_Right | HidNpadButton_StickLRight, XBMCK_RIGHT},
++    {HidNpadButton_A, XBMCK_RETURN},
++    {HidNpadButton_B, XBMCK_BACKSPACE},
++    {HidNpadButton_X, XBMCK_c},
++    {HidNpadButton_Y, XBMCK_i},
++    {HidNpadButton_Plus, XBMCK_m},
++    {HidNpadButton_Minus, XBMCK_TAB},
++    {HidNpadButton_L, XBMCK_PAGEUP},
++    {HidNpadButton_R, XBMCK_PAGEDOWN},
++    {HidNpadButton_ZL, XBMCK_r},
++    {HidNpadButton_ZR, XBMCK_f},
++    {HidNpadButton_StickL, XBMCK_SPACE},
++    {HidNpadButton_StickR, XBMCK_s},
++    {HidNpadButton_StickRUp, XBMCK_PLUS},
++    {HidNpadButton_StickRDown, XBMCK_MINUS},
++};
++
++static_assert(std::size(kPadKeys) == 18, "m_repeatAtNs in the header must have one slot per kPadKeys entry");
++
++// RetroPlayer needs a registered process control; the Switch 2 has no platform specifics.
++class CRPProcessInfoSwitch2 : public KODI::RETRO::CRPProcessInfo
++{
++public:
++  CRPProcessInfoSwitch2() : CRPProcessInfo("Switch2") {}
++  static std::unique_ptr<KODI::RETRO::CRPProcessInfo> Create()
++  {
++    return std::make_unique<CRPProcessInfoSwitch2>();
++  }
++};
++
++bool SendEvent(XBMC_Event& event)
++{
++  std::shared_ptr<CAppInboundProtocol> appPort = CServiceBroker::GetAppPort();
++  return appPort ? appPort->OnEvent(event) : false;
++}
++} // namespace
++
++void CWinSystemSwitch2GLESContext::Register()
++{
++  CWindowSystemFactory::RegisterWindowSystem(CreateWinSystem, "switch2");
++}
++
++std::unique_ptr<CWinSystemBase> CWinSystemSwitch2GLESContext::CreateWinSystem()
++{
++  return std::make_unique<CWinSystemSwitch2GLESContext>();
++}
++
++CWinSystemSwitch2GLESContext::CWinSystemSwitch2GLESContext() = default;
++
++CWinSystemSwitch2GLESContext::~CWinSystemSwitch2GLESContext()
++{
++  DestroyWindowSystem();
++}
++
++bool CWinSystemSwitch2GLESContext::InitWindowSystem()
++{
++  // Per-windowing registrations, as in the gbm/X11 GLES contexts: without a video renderer,
++  // VideoPlayer loops on "OutputPicture - failed to configure renderer" (rev 10 flight).
++  // VideoPlayer keeps the default CProcessInfo; decoding is FFmpeg software (no HW accels).
++  VIDEOPLAYER::CRendererFactory::ClearRenderer();
++  CDVDFactoryCodec::ClearHWAccels();
++  CLinuxRendererGLES::Register();
++  KODI::RETRO::CRPProcessInfo::RegisterProcessControl(CRPProcessInfoSwitch2::Create);
++  KODI::RETRO::CRPProcessInfo::RegisterRendererFactory(new KODI::RETRO::CRendererFactoryOpenGLES);
++  CScreenshotSurfaceGLES::Register();
++
++  padConfigureInput(1, HidNpadStyleSet_NpadStandard);
++  padInitializeDefault(&m_pad);
++  // Fix the touch coordinate range so the scaling in PollTouch() is right whatever the default is.
++  const Result touchRc = hidSetTouchScreenOutputRanges(1280, 720);
++  if (R_FAILED(touchRc))
++    CLog::Log(LOGWARNING, "Switch2: hidSetTouchScreenOutputRanges failed 0x{:x}", touchRc);
++  hidInitializeTouchScreen();
++
++  m_window = nwindowGetDefault();
++
++  s32 w = 0, h = 0;
++  if (R_SUCCEEDED(appletGetDefaultDisplayResolution(&w, &h)) && w > 0 && h > 0)
++  {
++    m_displayWidth = std::min<s32>(w, 1920);
++    m_displayHeight = std::min<s32>(h, 1080);
++  }
++  CLog::Log(LOGINFO, "Switch2: display {}x{}", m_displayWidth, m_displayHeight);
++
++  if (!m_eglContext.CreateDisplay(EGL_DEFAULT_DISPLAY))
++    return false;
++  if (!m_eglContext.InitializeDisplay(EGL_OPENGL_ES_API))
++    return false;
++  if (!m_eglContext.ChooseConfig(EGL_OPENGL_ES3_BIT))
++    return false;
++  // CEGLContextUtils::ChooseConfig returns true even when no config matched; fail loudly instead.
++  if (m_eglContext.GetEGLConfig() == nullptr)
++  {
++    CLog::Log(LOGFATAL, "Switch2: no EGL config matched (ES3, RGB888, window)");
++    return false;
++  }
++
++  CEGLAttributesVec contextAttribs;
++  contextAttribs.Add({{EGL_CONTEXT_MAJOR_VERSION, 3}, {EGL_CONTEXT_MINOR_VERSION, 0}});
++  if (!m_eglContext.CreateContext(contextAttribs))
++    return false;
++
++  return CWinSystemBase::InitWindowSystem();
++}
++
++bool CWinSystemSwitch2GLESContext::DestroyWindowSystem()
++{
++  m_eglContext.Destroy();
++  return true;
++}
++
++bool CWinSystemSwitch2GLESContext::CreateNewWindow(const std::string& name,
++                                                   bool fullScreen,
++                                                   RESOLUTION_INFO& res)
++{
++  if (m_bWindowCreated)
++  {
++    // The NWindow has one fixed size; nothing to recreate.
++    return true;
++  }
++
++  nwindowSetDimensions(m_window, m_displayWidth, m_displayHeight);
++  if (!m_eglContext.CreateSurface(reinterpret_cast<EGLNativeWindowType>(m_window)))
++    return false;
++  if (!m_eglContext.BindContext())
++    return false;
++
++  m_nWidth = m_displayWidth;
++  m_nHeight = m_displayHeight;
++  m_bFullScreen = true;
++  m_bWindowCreated = true;
++  return true;
++}
++
++bool CWinSystemSwitch2GLESContext::DestroyWindow()
++{
++  m_eglContext.DestroySurface();
++  m_bWindowCreated = false;
++  return true;
++}
++
++bool CWinSystemSwitch2GLESContext::ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop)
++{
++  CRenderSystemGLES::ResetRenderSystem(m_displayWidth, m_displayHeight);
++  return true;
++}
++
++bool CWinSystemSwitch2GLESContext::SetFullScreen(bool fullScreen,
++                                                 RESOLUTION_INFO& res,
++                                                 bool blankOtherDisplays)
++{
++  CreateNewWindow("", true, res);
++  CRenderSystemGLES::ResetRenderSystem(m_displayWidth, m_displayHeight);
++  return true;
++}
++
++void CWinSystemSwitch2GLESContext::UpdateResolutions()
++{
++  CWinSystemBase::UpdateResolutions();
++
++  RESOLUTION_INFO& desktop = CDisplaySettings::GetInstance().GetResolutionInfo(RES_DESKTOP);
++  UpdateDesktopResolution(desktop, "Switch2", m_displayWidth, m_displayHeight, 60.0f, 0);
++  CServiceBroker::GetWinSystem()->GetGfxContext().ResetOverscan(desktop);
++  CDisplaySettings::GetInstance().ClearCustomResolutions();
++  CDisplaySettings::GetInstance().AddResolutionInfo(desktop);
++  CDisplaySettings::GetInstance().ApplyCalibrations();
++}
++
++void CWinSystemSwitch2GLESContext::Register(IDispResource* resource)
++{
++  std::unique_lock<CCriticalSection> lock(m_resourceSection);
++  m_resources.push_back(resource);
++}
++
++void CWinSystemSwitch2GLESContext::Unregister(IDispResource* resource)
++{
++  std::unique_lock<CCriticalSection> lock(m_resourceSection);
++  m_resources.erase(std::remove(m_resources.begin(), m_resources.end(), resource),
++                    m_resources.end());
++}
++
++void CWinSystemSwitch2GLESContext::SetVSyncImpl(bool enable)
++{
++  m_eglContext.SetVSync(enable);
++}
++
++void CWinSystemSwitch2GLESContext::PresentRenderImpl(bool rendered)
++{
++  if (rendered && !m_eglContext.TrySwapBuffers())
++    CEGLUtils::Log(LOGERROR, "eglSwapBuffers failed");
++}
++
++void CWinSystemSwitch2GLESContext::PushKey(uint32_t sym, bool down)
++{
++  XBMC_Event event{};
++  event.type = down ? XBMC_KEYDOWN : XBMC_KEYUP;
++  event.key.keysym.sym = static_cast<XBMCKey>(sym);
++  event.key.keysym.scancode = 0;
++  event.key.keysym.mod = XBMCKMOD_NONE;
++  event.key.keysym.unicode = 0;
++  SendEvent(event);
++}
++
++void CWinSystemSwitch2GLESContext::PollPad()
++{
++  padUpdate(&m_pad);
++  const uint64_t held = padGetButtons(&m_pad);
++
++  // Kodi expects the window system to auto-repeat held keys (scrolling, long press).
++  constexpr uint64_t kRepeatDelayNs = 400000000ULL;
++  constexpr uint64_t kRepeatRateNs = 80000000ULL;
++  const uint64_t nowNs = armTicksToNs(armGetSystemTick());
++  for (size_t i = 0; i < std::size(kPadKeys); ++i)
++  {
++    const PadKey& key = kPadKeys[i];
++    const bool down = (held & key.button) != 0;
++    const bool before = (m_heldMapped & key.button) != 0;
++    if (down != before)
++    {
++      PushKey(key.sym, down);
++      m_repeatAtNs[i] = nowNs + kRepeatDelayNs;
++    }
++    else if (down && nowNs >= m_repeatAtNs[i])
++    {
++      PushKey(key.sym, true);
++      m_repeatAtNs[i] = nowNs + kRepeatRateNs;
++    }
++  }
++  m_heldMapped = held;
++}
++
++void CWinSystemSwitch2GLESContext::PollTouch()
++{
++  HidTouchScreenState state{};
++  if (hidGetTouchScreenStates(&state, 1) == 0)
++    return;
++
++  // The touch panel reports 1280x720 coordinates in handheld mode.
++  const float sx = static_cast<float>(m_displayWidth) / 1280.f;
++  const float sy = static_cast<float>(m_displayHeight) / 720.f;
++
++  if (state.count > 0)
++  {
++    const float x = state.touches[0].x * sx;
++    const float y = state.touches[0].y * sy;
++    XBMC_Event motion{};
++    motion.type = XBMC_MOUSEMOTION;
++    motion.motion.x = static_cast<uint16_t>(x);
++    motion.motion.y = static_cast<uint16_t>(y);
++    SendEvent(motion);
++    if (!m_touchDown)
++    {
++      XBMC_Event press{};
++      press.type = XBMC_MOUSEBUTTONDOWN;
++      press.button.button = 1;
++      press.button.x = static_cast<uint16_t>(x);
++      press.button.y = static_cast<uint16_t>(y);
++      SendEvent(press);
++    }
++    m_touchDown = true;
++    m_touchX = x;
++    m_touchY = y;
++  }
++  else if (m_touchDown)
++  {
++    XBMC_Event release{};
++    release.type = XBMC_MOUSEBUTTONUP;
++    release.button.button = 1;
++    release.button.x = static_cast<uint16_t>(m_touchX);
++    release.button.y = static_cast<uint16_t>(m_touchY);
++    SendEvent(release);
++    m_touchDown = false;
++  }
++}
++
++void CWinSystemSwitch2GLESContext::HandleApplet()
++{
++  // appletMainLoop() processes HOME/sleep messages and returns false on an exit request.
++  if (!appletMainLoop())
++  {
++    XBMC_Event quit{};
++    quit.type = XBMC_QUIT;
++    SendEvent(quit);
++  }
++}
++
++bool CWinSystemSwitch2GLESContext::MessagePump()
++{
++  HandleApplet();
++  PollPad();
++  PollTouch();
++  return true;
++}
+diff --git a/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.h b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.h
+new file mode 100644
+index 0000000..da226a2
+--- /dev/null
++++ b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.h
+@@ -0,0 +1,89 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++#include "rendering/gles/RenderSystemGLES.h"
++#include "threads/CriticalSection.h"
++#include "utils/EGLUtils.h"
++#include "windowing/WinSystem.h"
++
++#include <memory>
++#include <vector>
++
++#include <switch.h>
++
++class IDispResource;
++
++namespace KODI
++{
++namespace WINDOWING
++{
++namespace SWITCH2
++{
++
++// One full-screen window on the default NWindow, GLES 3 through OunceVK's EGL.
++// Input: the main controller is mapped to keyboard keys, the touch screen to the mouse.
++class CWinSystemSwitch2GLESContext : public CWinSystemBase, public CRenderSystemGLES
++{
++public:
++  CWinSystemSwitch2GLESContext();
++  ~CWinSystemSwitch2GLESContext() override;
++
++  static void Register();
++  static std::unique_ptr<CWinSystemBase> CreateWinSystem();
++
++  const std::string GetName() override { return "switch2"; }
++  CRenderSystemBase* GetRenderSystem() override { return this; }
++
++  bool InitWindowSystem() override;
++  bool DestroyWindowSystem() override;
++  bool CreateNewWindow(const std::string& name, bool fullScreen, RESOLUTION_INFO& res) override;
++  bool DestroyWindow() override;
++  bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
++  bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
++  void UpdateResolutions() override;
++  bool CanDoWindowed() override { return false; }
++  bool SupportsScreenMove() override { return false; }
++  bool HasCursor() override { return false; }
++  void Register(IDispResource* resource) override;
++  void Unregister(IDispResource* resource) override;
++  bool MessagePump() override;
++  void* GetHWContext() override { return m_eglContext.GetEGLContext(); }
++
++  EGLDisplay GetEGLDisplay() const { return m_eglContext.GetEGLDisplay(); }
++
++protected:
++  void SetVSyncImpl(bool enable) override;
++  void PresentRenderImpl(bool rendered) override;
++
++private:
++  void PollPad();
++  void PollTouch();
++  void PushKey(uint32_t sym, bool down);
++  void HandleApplet();
++
++  CEGLContextUtils m_eglContext;
++  NWindow* m_window = nullptr;
++  int m_displayWidth = 1920;
++  int m_displayHeight = 1080;
++
++  PadState m_pad{};
++  uint64_t m_heldMapped = 0;
++  uint64_t m_repeatAtNs[18] = {}; // per kPadKeys entry: next auto-repeat time while held
++  bool m_touchDown = false;
++  float m_touchX = 0.f;
++  float m_touchY = 0.f;
++
++  CCriticalSection m_resourceSection;
++  std::vector<IDispResource*> m_resources;
++};
++
++} // namespace SWITCH2
++} // namespace WINDOWING
++} // namespace KODI

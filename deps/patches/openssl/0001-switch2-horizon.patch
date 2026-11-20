@@ -1,0 +1,90 @@
+diff -ru a/crypto/armcap.c b/crypto/armcap.c
+--- a/crypto/armcap.c	2026-11-20 18:53:10.078233307 +0200
++++ b/crypto/armcap.c	2026-11-20 18:56:10.418513865 +0200
+@@ -24,7 +24,37 @@
+ unsigned int OPENSSL_arm_midr = 0;
+ unsigned int OPENSSL_armv8_rsa_neonized = 0;
+ 
+-#if __ARM_MAX_ARCH__ < 7
++#if defined(__SWITCH__) && __ARM_MAX_ARCH__ >= 7
++/*
++ * Horizon (libnx/libounce) has no getauxval(), no sigsetjmp() and no SIGILL
++ * delivery, so probing would kill the process. The Switch 2 CPU (Cortex-A78C,
++ * built with +crypto) has NEON, AES, PMULL, SHA1 and SHA256; not SHA512/SHA3.
++ * MIDR_EL1 is not readable from EL0, so ARMV8_CPUID and the A72/N1 RSA
++ * tuning stay off. OPENSSL_armcap is honoured as on other platforms.
++ */
++uint32_t OPENSSL_rdtsc(void)
++{
++    return 0;
++}
++
++void OPENSSL_cpuid_setup(void) __attribute__((constructor));
++void OPENSSL_cpuid_setup(void)
++{
++    const char *e;
++    static int trigger = 0;
++
++    if (trigger)
++        return;
++    trigger = 1;
++
++    if ((e = getenv("OPENSSL_armcap")) != NULL) {
++        OPENSSL_armcap_P = (unsigned int)strtoul(e, NULL, 0);
++        return;
++    }
++    OPENSSL_armcap_P = ARMV7_NEON | ARMV8_AES | ARMV8_PMULL | ARMV8_SHA1
++                       | ARMV8_SHA256;
++}
++#elif __ARM_MAX_ARCH__ < 7
+ void OPENSSL_cpuid_setup(void)
+ {
+ }
+diff -ru a/crypto/uid.c b/crypto/uid.c
+--- a/crypto/uid.c	2026-11-20 18:53:10.083593802 +0200
++++ b/crypto/uid.c	2026-11-20 18:53:10.101561355 +0200
+@@ -10,7 +10,8 @@
+ #include <openssl/crypto.h>
+ #include <openssl/opensslconf.h>
+ 
+-#if defined(OPENSSL_SYS_WIN32) || defined(OPENSSL_SYS_VXWORKS) || defined(OPENSSL_SYS_UEFI)
++#if defined(OPENSSL_SYS_WIN32) || defined(OPENSSL_SYS_VXWORKS) || defined(OPENSSL_SYS_UEFI) \
++    || defined(__SWITCH__)
+ 
+ int OPENSSL_issetugid(void)
+ {
+diff -ru a/include/internal/sockets.h b/include/internal/sockets.h
+--- a/include/internal/sockets.h	2026-11-20 18:55:16.989389462 +0200
++++ b/include/internal/sockets.h	2026-11-20 18:55:17.003135523 +0200
+@@ -82,6 +82,9 @@
+ #ifndef UNIX_PATH_MAX
+ #define UNIX_PATH_MAX sizeof(((struct sockaddr_un *)NULL)->sun_path)
+ #endif
++#elif defined(__SWITCH__)
++/* libounce's sys/socket.h defines AF_UNIX but has no struct sockaddr_un. */
++#undef AF_UNIX
+ #endif
+ #ifdef FILIO_H
+ #include <sys/filio.h> /* FIONBIO in some SVR4, e.g. unixware, solaris */
+diff -ru a/providers/implementations/rands/seeding/rand_unix.c b/providers/implementations/rands/seeding/rand_unix.c
+--- a/providers/implementations/rands/seeding/rand_unix.c	2026-11-20 18:53:10.072611236 +0200
++++ b/providers/implementations/rands/seeding/rand_unix.c	2026-11-20 18:53:10.101396803 +0200
+@@ -355,6 +355,18 @@
+      * Note: Sometimes getentropy() can be provided but not implemented
+      * internally. So we need to check errno for ENOSYS
+      */
++#if defined(__SWITCH__)
++    /*
++     * Horizon (libnx/libounce): newlib's getentropy() has no _getentropy_r
++     * backend and there is no /dev/urandom. randomGet() is the kernel CSPRNG.
++     */
++    {
++        extern void randomGet(void *buf, size_t len);
++
++        randomGet(buf, buflen);
++        return (ssize_t)buflen;
++    }
++#endif
+ #if !defined(__DragonFly__) && !defined(__NetBSD__)
+ #if defined(__GNUC__) && __GNUC__ >= 2 && defined(__ELF__) && !defined(__hpux)
+     extern int getentropy(void *buffer, size_t length) __attribute__((weak));

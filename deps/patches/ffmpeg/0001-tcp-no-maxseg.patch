@@ -1,0 +1,12 @@
+--- a/libavformat/tcp.c	2026-11-20 19:02:36.186460881 +0200
++++ b/libavformat/tcp.c	2026-11-20 19:02:36.198812565 +0200
+@@ -90,7 +90,8 @@
+             ff_log_net_error(ctx, AV_LOG_WARNING, "setsockopt(TCP_NODELAY)");
+         }
+     }
+-#if !HAVE_WINSOCK2_H
++/* libounce's netinet/tcp.h (Switch 2) has no TCP_MAXSEG. */
++#if !HAVE_WINSOCK2_H && defined(TCP_MAXSEG)
+     if (s->tcp_mss > 0) {
+         if (setsockopt (fd, IPPROTO_TCP, TCP_MAXSEG, &s->tcp_mss, sizeof (s->tcp_mss))) {
+             ff_log_net_error(ctx, AV_LOG_WARNING, "setsockopt(TCP_MAXSEG)");

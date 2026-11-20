@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# pkg-config for the Kodi Switch 2 build: our static deps in /k/prefix first, then the devkit portlibs.
+# (The devkit's aarch64-none-elf-pkg-config clears PKG_CONFIG_PATH, so it never sees /k/prefix.)
+export PKG_CONFIG_DIR=
+export PKG_CONFIG_PATH=
+export PKG_CONFIG_SYSROOT_DIR=
+export PKG_CONFIG_LIBDIR="/k/prefix/lib/pkgconfig:${DEVKITPRO:-/opt/devkitpro}/portlibs/switch2/lib/pkgconfig:${DEVKITPRO:-/opt/devkitpro}/portlibs/switch/lib/pkgconfig"
+[[ "$1" == '--version' ]] && exec pkg-config --version
+exec pkg-config --static "$@"
