@@ -1,0 +1,14 @@
+diff --git a/src/cpu.c b/src/cpu.c
+index 9bb85f1..2eef97f 100644
+--- a/src/cpu.c
++++ b/src/cpu.c
+@@ -96,6 +96,9 @@ COLD int dav1d_num_logical_processors(Dav1dContext *const c) {
+     size_t length = sizeof(num_processors);
+     if (!sysctlbyname("hw.logicalcpu", &num_processors, &length, NULL, 0))
+         return num_processors;
++#elif defined(__SWITCH__)
++    /* Switch 2 (libounce/newlib): no sysconf(); an application gets three CPU cores. */
++    return 3;
+ #elif defined(_SC_NPROCESSORS_ONLN)
+     return (int)sysconf(_SC_NPROCESSORS_ONLN);
+ #endif

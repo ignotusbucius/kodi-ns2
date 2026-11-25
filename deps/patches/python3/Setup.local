@@ -1,0 +1,8 @@
+# Switch 2 (Kodi port) Setup.local, copied to Modules/Setup.local by deps/build-deps.sh.
+# makesetup reads this file first ("first rule wins"); configure's MODULE_BUILDTYPE=static already makes
+# every module of Setup.stdlib static. These add the Switch 2 replacements (patch 0010).
+*static*
+# pwd/grp over an empty user database (newlib declares getpw*/getgr* but has none).
+pwd pwdmodule.c switch2_compat.c
+# Importable stub: no fork/exec on the console; fork_exec() raises OSError(ENOSYS).
+_posixsubprocess _posixsubprocess_switch2.c

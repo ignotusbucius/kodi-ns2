@@ -1,0 +1,53 @@
+diff --git a/src/decrypters/CMakeLists.txt b/src/decrypters/CMakeLists.txt
+index 717eb2f..f528fc5 100644
+--- a/src/decrypters/CMakeLists.txt
++++ b/src/decrypters/CMakeLists.txt
+@@ -11,8 +11,11 @@ set(HEADERS
+ 
+ add_dir_sources(SOURCES HEADERS)
+ 
++# ISA_NO_DRM (Switch 2 static build): no decrypter is compiled; GetDecrypter returns nullptr.
++if(NOT ISA_NO_DRM)
+ add_subdirectory(clearkey)
+-if(NOT CORE_SYSTEM_NAME STREQUAL ios AND NOT CORE_SYSTEM_NAME STREQUAL darwin_embedded)
++endif()
++if(NOT ISA_NO_DRM AND NOT CORE_SYSTEM_NAME STREQUAL ios AND NOT CORE_SYSTEM_NAME STREQUAL darwin_embedded)
+   if(CORE_SYSTEM_NAME STREQUAL android)
+     add_subdirectory(widevineandroid)
+   else()
+diff --git a/src/decrypters/DrmFactory.cpp b/src/decrypters/DrmFactory.cpp
+index 51da333..af3a1aa 100644
+--- a/src/decrypters/DrmFactory.cpp
++++ b/src/decrypters/DrmFactory.cpp
+@@ -9,6 +9,7 @@
+ #include "DrmFactory.h"
+ 
+ #include <kodi/addon-instance/inputstream/StreamCrypto.h>
++#ifndef ISA_NO_DRM
+ #include "clearkey/ClearKeyDecrypter.h"
+ #if ANDROID
+ #include "widevineandroid/WVDecrypter.h"
+@@ -17,11 +18,17 @@
+ #include "widevine/WVDecrypter.h"
+ #endif
+ #endif
++#endif // ISA_NO_DRM
+ 
+ using namespace DRM;
+ 
+ IDecrypter* DRM::FACTORY::GetDecrypter(STREAM_CRYPTO_KEY_SYSTEM keySystem)
+ {
++#ifdef ISA_NO_DRM
++  // Built without DRM/CDM support: every key system is unsupported.
++  (void)keySystem;
++  return nullptr;
++#else
+   if (keySystem == STREAM_CRYPTO_KEY_SYSTEM_CLEARKEY)
+   {
+     return new CClearKeyDecrypter();
+@@ -46,4 +53,5 @@ IDecrypter* DRM::FACTORY::GetDecrypter(STREAM_CRYPTO_KEY_SYSTEM keySystem)
+   }
+ 
+   return nullptr;
++#endif // ISA_NO_DRM
+ }

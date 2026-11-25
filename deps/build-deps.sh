@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # build-deps.sh: cross-build the static libraries Kodi 21.3 needs that the
-# Switch 2 devkit (ounce-devkit image) lacks, into ./prefix.
+# Switch 2 devkit (ounce-devkit image) lacks, into homebrew/kodi/prefix.
 #
 # Run inside the ounce-devkit image, after sourcing switch2vars.sh:
-#   podman run --rm --security-opt label=disable -v <repo>:/k \
+#   podman run --rm --security-opt label=disable -v <repo>/homebrew/kodi:/k \
 #     -w /k ounce-devkit bash -lc '. /opt/devkitpro/switch2vars.sh; bash deps/build-deps.sh'
-# (label=disable, not :Z: another container relabelling the tree with :Z
+# (label=disable, not :Z: another container relabelling homebrew/kodi with :Z
 # mid-build made every file "Permission denied" to this one.)
 #
 # Idempotent: a library whose stamp prefix/.stamp-<name> exists is skipped;
@@ -49,9 +49,13 @@ TARBALLS=(
   "sqlite3|3.49.2|https://www.sqlite.org/2025/sqlite-autoconf-3490200.tar.gz|5c6d8697e8a32a1512a9be5ad2b2e7a891241c334f56f8b0fb4fc6051e1652e8"
   "tinyxml|2.6.2_2|http://mirrors.kodi.tv/build-deps/sources/tinyxml-2.6.2_2.tar.gz|8164c9ad48b9028667768a584d62f7760cfbfb90d0dd6214ad174403058da10c"
   "libcdio|2.1.0|https://ftp.gnu.org/gnu/libcdio/libcdio-2.1.0.tar.bz2|8550e9589dbd594bfac93b81ecf129b1dc9d0d51e90f9696f1b2f9b2af32712b"
+  "dav1d|1.4.1|http://mirrors.kodi.tv/build-deps/sources/dav1d-1.4.1.tar.bz2|ab02c6c72c69b2b24726251f028b7cb57d5b3659eeec9f67f6cecb2322b127d8"
   "ffmpeg|6.0.1|http://mirrors.kodi.tv/build-deps/sources/ffmpeg-6.0.1.tar.gz|375fd8abab657d18578554927d23abfc9cb3b6794bd9839330230cf5f9fcea26"
+  "libnfs|5.0.2|http://mirrors.kodi.tv/build-deps/sources/libnfs-5.0.2.tar.gz|637e56643b19da9fba98f06847788c4dad308b723156a64748041035dcdf9bd3"
+  "libmicrohttpd|0.9.77|http://mirrors.kodi.tv/build-deps/sources/libmicrohttpd-0.9.77.tar.gz|9e7023a151120060d2806a6ea4c13ca9933ece4eacfc5c9464d20edddb76b0a0"
+  "python3|3.11.7|https://www.python.org/ftp/python/3.11.7/Python-3.11.7.tar.xz|18e1aa7e66ff3a58423d59ed22815a6954e53342122c45df20c96877c062b9b7"
 )
-ORDER=(libiconv openssl sqlite3 tinyxml libcdio ffmpeg)
+ORDER=(libiconv openssl sqlite3 tinyxml libcdio dav1d ffmpeg python3 libnfs libmicrohttpd)
 
 # has_sym <lib.a> <symbol>: the archive defines the symbol (no grep -q: SIGPIPE
 # under pipefail). C++ names are matched demangled.
@@ -128,6 +132,10 @@ OPENSSL_CONF_FLAGS=(linux-aarch64 no-shared no-dso no-async no-afalgeng no-engin
 build_openssl() {
   local d; d="$(unpack openssl)"; cd "$d"
   patch -p1 -i "$PATCHES/openssl/0001-switch2-horizon.patch"
+  # patches/openssl/0002-switch2-crumbs.patch: S2CRUMB() breadcrumbs on the method-fetch path
+  # (core_algorithm.c, core_fetch.c, evp_fetch.c, digest.c, provider_core.c) through a WEAK
+  # Switch2OsslCrumb (include/internal/switch2_crumb.h): no-ops unless Kodi defines it.
+  patch -p1 -i "$PATCHES/openssl/0002-switch2-crumbs.patch"
   local asm=()
   [ "${OPENSSL_NO_ASM:-0}" = 1 ] && asm=(no-asm)
   # Configure takes CC/CFLAGS/CPPFLAGS/LDFLAGS from the environment.
@@ -222,12 +230,55 @@ build_libcdio() {
   has_sym libcdio.a cdio_open
   has_sym libiso9660.a iso9660_open
 }
+# ---------------------------------------------------------------- dav1d
+# Kodi 21's pinned 1.4.1 (tools/depends/target/dav1d; its sha512 matches), built like Kodi's recipe
+# (meson, static, release, asm on, no tools/examples/tests) with a cross file for libounce. AArch64
+# NEON asm; CPU features: dav1d's "unsupported OS" path enables NEON only (no getauxval here).
+# patches/dav1d/0001-switch2-cpu-count.patch: dav1d_num_logical_processors returns 3 on __SWITCH__
+# (no sysconf in newlib/libounce; FFmpeg passes Kodi's thread count anyway).
+build_dav1d() {
+  local d; d="$(unpack dav1d)"; cd "$d"
+  patch -p1 -i "$PATCHES/dav1d/0001-switch2-cpu-count.patch"
+  local q; q() { local a out=""; for a in "$@"; do out="$out'$a', "; done; echo "[${out%, }]"; }
+  # shellcheck disable=SC2086
+  cat >cross.meson <<CROSS
+[binaries]
+c = '$CC'
+cpp = '$CXX'
+ar = '$AR'
+strip = '$STRIP'
+nm = '$NM'
+pkgconfig = 'false'
+
+[built-in options]
+c_args = $(q $CPPFLAGS $CFLAGS)
+c_link_args = $(q $LDFLAGS $LIBS)
+
+[host_machine]
+system = 'switch2'
+cpu_family = 'aarch64'
+cpu = 'cortex-a78c'
+endian = 'little'
+CROSS
+  env -u CC -u CXX -u CFLAGS -u CPPFLAGS -u LDFLAGS -u LIBS \
+    meson setup build --cross-file cross.meson --prefix="$PREFIX" --libdir=lib --buildtype=release \
+    --default-library=static -Denable_asm=true -Denable_tools=false -Denable_examples=false \
+    -Denable_tests=false
+  ninja -C build -j"$JOBS"
+  ninja -C build install
+  has_sym libdav1d.a dav1d_open
+  has_sym libdav1d.a dav1d_send_data
+}
 # ---------------------------------------------------------------- ffmpeg
 # Kodi's pinned 6.0.1 (its FFMPEG-VERSION and mirror tarball; that recipe
 # directory has no patches). Flags follow Kodi's ffmpeg CMakeLists.txt (gpl,
 # postproc, pthreads, runtime-cpudetect, no sdl2/vulkan/doc/programs/devices)
 # plus --disable-autodetect so nothing from the Switch 1 portlibs (bz2, lzma,
-# dav1d...) is picked up; only zlib is enabled. Never the portlibs' FFmpeg 7.1.
+# dav1d...) is picked up; only zlib and our own prefix/ libdav1d (rev 26) are enabled. Never the
+# portlibs' FFmpeg 7.1. The native av1 decoder stays: Kodi opens it by name first (hwaccel probe, one
+# thread); with no AV1 hwaccel its get_format sets STATE_HW_FAILED, Kodi reopens, and
+# avcodec_find_decoder(AV_CODEC_ID_AV1) then returns libdav1d (listed before av1 in allcodecs.c)
+# with frame threads (STATE_SW_MULTI). Without av1, libdav1d would be opened single-threaded.
 FFMPEG_NETWORK="${FFMPEG_NETWORK:---enable-network}"
 build_ffmpeg() {
   local d; d="$(unpack ffmpeg)"; cd "$d"
@@ -243,14 +294,165 @@ build_ffmpeg() {
     --disable-shared --enable-static --enable-pic --disable-programs --disable-doc \
     --disable-debug --enable-gpl --enable-postproc --enable-runtime-cpudetect \
     --enable-pthreads "$FFMPEG_NETWORK" --disable-devices --disable-hwaccels \
-    --disable-autodetect --enable-zlib --disable-sdl2 --disable-vulkan \
+    --disable-autodetect --enable-zlib --enable-libdav1d --disable-sdl2 --disable-vulkan \
     --extra-version="kodi-6.0.1" --extra-libs="$LIBS"
   # (configure already reads CFLAGS/CPPFLAGS/LDFLAGS from the environment.)
   make -j"$JOBS"
   make install
   has_sym libavcodec.a avcodec_send_packet
+  has_sym libavcodec.a ff_libdav1d_decoder
   has_sym libavformat.a avformat_open_input
 }
+
+# ---------------------------------------------------------------- python3
+# CPython 3.11.7 (Kodi's PYTHON3-VERSION; its sha512 is checked too), embedded in kodi.nro for Python
+# add-ons. Static only (no dlopen): MODULE_BUILDTYPE=static compiles every detected extension module
+# into libpython3.11.a and Modules/config.c (_PyImport_Inittab), as Kodi's depends recipe does for
+# every platform. A native 3.11.7 is built first for --with-build-python (freezing, sysconfigdata,
+# compileall). Patches in patches/python3/ (all on __SWITCH__ or the switch2 sys.platform):
+#  0001 configure    accept --host=aarch64-*-elf as ac_sys_system=Switch2 (sys.platform "switch2");
+#  0002 urandom      os.urandom/hash seed from libounce randomGet() (no getentropy backend, no /dev/urandom);
+#  0003 pyport.h     UTF-8 locale + filesystem encoding (newlib's C locale is ASCII), as Android/VxWorks;
+#  0004 threads      2 MiB default stack for Python threads (libounce gives 128 KiB with an attr);
+#  0005 subprocess   switch2 has no processes: Popen raises OSError(ENOTSUP), like emscripten/wasi;
+#  0006 posix        os.getcwd() drops the "sdmc:" device prefix (posixpath needs "/..." absolute).
+#  0007 pyport.h     PY_SSIZE_T_MAX without SSIZE_MAX (newlib <limits.h> lacks it);
+#  0008 time         newlib's _timezone/_daylight (no timezone/daylight);
+#  0009 posix        os.statvfs() without fstatvfs() (libsysbase has statvfs only);
+#  0010 stubs        Modules/switch2_compat.c: empty passwd/group database for pwd/grp;
+#                    Modules/_posixsubprocess_switch2.c: importable, fork_exec() -> OSError(ENOSYS);
+#  0011 _sqlite      bounded retry on SQLITE_LOCKED[_SHAREDCACHE] (Kodi's shared cache; busy_timeout
+#                    covers only SQLITE_BUSY): prepare and first step, 1->50 ms backoff, ~2 s (util.h).
+# Setup.local (patches/python3/) adds pwd (+compat) and the _posixsubprocess stub.
+# Not built (n/a below): no fork/exec (_posixshmem), no mmap, no tty (termios), no getrusage/rlimit
+# (resource), _uuid (the deps/uuid stub has no uuid_generate_time: a random UUID would be reported as
+# uuid1; uuid.py's pure fallback is correct), no libffi (_ctypes is a setup.py module, never run when
+# cross compiling), no syslog/gdbm/nis/tk. _multiprocessing builds (named semaphores link; at runtime
+# they need processes anyway).
+PY_VER=3.11
+PY_SHA512=11e06f2ffe1f66888cb5b4e9f607de815294d6863a77eda6ec6d7c724ef158df9f51881f4a956d4a6fa973c2fb6fd031d495e3496e9b0bb53793fb1cc8434c63
+PY_HOST="$KODI/hosttools/python3"
+PY_NA_MODULES=(_posixsubprocess _posixshmem mmap termios resource _uuid
+  _xxsubinterpreters spwd syslog nis ossaudiodev _crypt _gdbm _tkinter _scproxy
+  _testcapi _testinternalcapi _testbuffer _testclinic _testimportmultiple _testmultiphase _xxtestfuzz
+  _ctypes_test xxlimited xxlimited_35)
+# Cache answers for a cross build; functions declared but not linkable (configure only compile-tests
+# them; the python link test found fchdir/fdatasync/setgroups/chroot); plus functions newlib/libsysbase
+# link but cannot do (ENOSYS stubs:
+# fork/exec/wait/kill/link/system) or that would touch console state (clock_settime): left out so
+# Python does not expose os.fork() etc. as if they worked (darwin_embedded's recipe does the same).
+PY_CACHE=(ac_cv_file__dev_ptmx=no ac_cv_file__dev_ptc=no ac_cv_buggy_getaddrinfo=no
+  ac_cv_pthread_is_default=yes ac_cv_func_dlopen=no ac_cv_lib_dl_dlopen=no
+  ac_cv_func_fork=no ac_cv_func_fork1=no ac_cv_func_vfork=no ac_cv_func_execv=no ac_cv_func_fexecve=no
+  ac_cv_func_system=no ac_cv_func_posix_spawn=no ac_cv_func_posix_spawnp=no
+  ac_cv_func_forkpty=no ac_cv_lib_util_forkpty=no ac_cv_func_openpty=no ac_cv_lib_util_openpty=no
+  ac_cv_func_wait=no ac_cv_func_wait3=no ac_cv_func_wait4=no ac_cv_func_waitpid=no ac_cv_func_waitid=no
+  ac_cv_func_kill=no ac_cv_func_killpg=no ac_cv_func_link=no ac_cv_func_linkat=no
+  ac_cv_func_getentropy=no ac_cv_func_getrandom=no ac_cv_func_clock_settime=no ac_cv_func_settimeofday=no
+  ac_cv_func_sched_setaffinity=no ac_cv_func_setpriority=no ac_cv_func_nice=no
+  ac_cv_header_sys_resource_h=no ac_cv_working_tzset=yes
+  ac_cv_func_getpwuid=yes ac_cv_func_getpwent=yes ac_cv_func_getgrgid=yes
+  ac_cv_func_fchdir=no ac_cv_func_fdatasync=no ac_cv_func_setgroups=no ac_cv_func_chroot=no)
+build_python3_host() {
+  if [ -x "$PY_HOST/bin/python$PY_VER" ] && [ "$("$PY_HOST/bin/python$PY_VER" -c 'import sys; print(sys.version.split()[0])')" = "$(field python3 1)" ]; then
+    return 0
+  fi
+  local tb d; tb="$(fetch python3)"; d="$BUILD/python3-host"
+  rm -rf "$d"; mkdir -p "$d"; tar --no-same-owner -xf "$tb" -C "$d" --strip-components=1
+  ( cd "$d"
+    env -u CC -u CXX -u AR -u RANLIB -u NM -u STRIP -u LD -u CPPFLAGS -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+        -u LIBS -u PKG_CONFIG_LIBDIR -u ARCH bash -c "./configure --prefix='$PY_HOST' --without-ensurepip \
+        --disable-test-modules >/dev/null && make -j$JOBS >/dev/null && make install >/dev/null" )
+  "$PY_HOST/bin/python$PY_VER" -c 'import sys, zlib, ssl, sqlite3; print("host", sys.version)'
+}
+build_python3() {
+  local tb d p m na=(); tb="$(fetch python3)"
+  echo "$PY_SHA512  $tb" | sha512sum -c
+  build_python3_host
+  d="$(unpack python3)"; cd "$d"
+  for p in "$PATCHES"/python3/*.patch; do patch -p1 -i "$p"; done
+  install -m644 "$PATCHES/python3/Setup.local" Modules/Setup.local
+  for m in "${PY_NA_MODULES[@]}"; do na+=("py_cv_module_$m=n/a"); done
+  # Frame records in every function, as Kodi's own code (CrashHandler.cpp walks x29).
+  CFLAGS="$CFLAGS -fno-omit-frame-pointer" \
+  ./configure --host="$HOST" --build=x86_64-linux-gnu --prefix="$PREFIX" \
+    --disable-shared --without-ensurepip --disable-test-modules --disable-ipv6 \
+    --with-build-python="$PY_HOST/bin/python$PY_VER" --with-openssl="$PREFIX" --with-openssl-rpath=no \
+    --without-system-expat --without-system-libmpdec --without-readline --with-pymalloc \
+    MODULE_BUILDTYPE=static "${PY_CACHE[@]}" "${na[@]}"
+  make -j"$JOBS" libpython$PY_VER.a
+  # Link test: the stock interpreter must link against newlib + libounce alone (not shipped). Kodi
+  # links the same archive, so a symbol missing here is missing in kodi.bin too.
+  # (LDFLAGS= : configure already copied them into CONFIGURE_LDFLAGS; twice repeats -specs/switch.ld.)
+  make -j"$JOBS" LDFLAGS= python
+  make pybuilddir.txt
+  make inclinstall
+  install -m644 libpython$PY_VER.a "$PREFIX/lib/"
+  # The bundled libmpdec (_decimal) and expat (pyexpat, _elementtree) are separate archives.
+  install -m644 Modules/_decimal/libmpdec/libmpdec.a "$PREFIX/lib/libpython$PY_VER-mpdec.a"
+  install -m644 Modules/expat/libexpat.a "$PREFIX/lib/libpython$PY_VER-expat.a"
+  # Pure-Python stdlib for the SD card (package.sh copies it to /switch/kodi/system/python).
+  local lib="$PREFIX/lib/python$PY_VER" bld
+  rm -rf "$lib"; mkdir -p "$lib/lib-dynload" "$lib/site-packages"
+  ( cd Lib && tar --exclude='__pycache__' --exclude='./test' --exclude='./idlelib' --exclude='./tkinter' \
+      --exclude='./turtledemo' --exclude='./ensurepip' --exclude='./turtle.py' --exclude='./lib2to3/tests' \
+      --exclude='./distutils/tests' --exclude='./unittest/test' --exclude='./ctypes/test' \
+      --exclude='./sqlite3/test' --exclude='./site-packages' -cf - . ) | tar -C "$lib" -xf -
+  bld="$(cat pybuilddir.txt)"
+  install -m644 "$bld"/_sysconfigdata_*.py "$lib/"
+  # .pyc next to the sources, unchecked-hash: SD copies change mtimes, so timestamp pycs would all be
+  # recompiled (and rewritten) on the console. Same 3.11.7 magic as the target. Also a syntax check
+  # of every shipped .py with the host interpreter.
+  "$PY_HOST/bin/python$PY_VER" -m compileall -q -j0 --invalidation-mode unchecked-hash \
+    -s "$lib" -p "/switch/kodi/system/python/lib/python$PY_VER" "$lib"
+  "$NM" --defined-only "$PREFIX/lib/libpython$PY_VER.a" 2>/dev/null | grep -E ' T PyInit_' | awk '{print $3}' | sort >"$BUILD/python3-inittab.txt"
+  cat "$BUILD/python3-inittab.txt"
+  has_sym libpython$PY_VER.a Py_InitializeEx
+  has_sym libpython$PY_VER.a PyInit__ssl
+  has_sym libpython$PY_VER.a PyInit__socket
+  has_sym libpython$PY_VER.a PyInit__sqlite3
+}
+
+# ---------------------------------------------------------------- libnfs
+# Kodi's pinned 5.0.2 (tools/depends/target/libnfs; its sha512 matches), the same cmake options as
+# Kodi's recipe, with libounce's Switch 2 toolchain. patches/libnfs/0001-switch2-no-ipv6-nobody.patch
+# (each hunk on __SWITCH__): AUTH_UNIX uid/gid 65534 (newlib has no getuid/getgid, as on Windows);
+# lib/switch2_compat.h, force-included: htonl/ntohl (<arpa/inet.h>), struct utimbuf, SOL_TCP,
+# major()/minor();
+# no AF_INET6 sockets (libounce's sockaddr_in6 has no sin6_len, so its family overlays the BSD
+# sa_len byte; CPython here is --disable-ipv6 for the same reason).
+build_libnfs() {
+  local d; d="$(unpack libnfs)"; cd "$d"
+  patch -p1 -i "$PATCHES/libnfs/0001-switch2-no-ipv6-nobody.patch"
+  # The toolchain file brings the arch flags, -specs and libounce itself: not again from the env.
+  env -u LDFLAGS -u LIBS -u CFLAGS -u CPPFLAGS -u CC -u CXX -u AR -u RANLIB -u NM -u STRIP -u LD \
+  cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/libounce/cmake/Switch2.cmake" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_INSTALL_LIBDIR=lib \
+    -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTS=OFF -DENABLE_DOCUMENTATION=OFF -DENABLE_UTILS=OFF \
+    -DENABLE_EXAMPLES=OFF -DHAVE_UTIME_H=1 -DCMAKE_C_FLAGS="-D__SWITCH__ -include $d/lib/switch2_compat.h"
+  cmake --build build -j"$JOBS"
+  cmake --install build
+  has_sym libnfs.a nfs_init_context
+  has_sym libnfs.a nfs_set_timeout
+  has_sym libnfs.a mount_getexports_timeout
+}
+# ---------------------------------------------------------------- libmicrohttpd
+# Kodi's pinned 0.9.77 (tools/depends/target/libmicrohttpd). Kodi's recipe has --enable-https (via
+# GnuTLS, which this port does not build): HTTPS is off, plain HTTP for the web interface/JSON-RPC.
+# Threads: pthreads; polling: select()/poll() of libounce's BSD sockets (no epoll on newlib).
+build_libmicrohttpd() {
+  local d; d="$(unpack libmicrohttpd)"; cd "$d"
+  ./configure --host="$HOST" --prefix="$PREFIX" --disable-shared --enable-static --disable-doc \
+    --disable-examples --disable-curl --disable-https --disable-epoll --without-gnutls \
+    --disable-tools --enable-itc=socketpair "${MHD_CACHE[@]}"
+  make -j"$JOBS" -C src/microhttpd
+  make -C src/microhttpd install
+  make -C src/include install
+  make install-pkgconfigDATA 2>/dev/null || install -m644 libmicrohttpd.pc "$PREFIX/lib/pkgconfig/"
+  rm -f "$PREFIX"/lib/libmicrohttpd.la
+  has_sym libmicrohttpd.a MHD_start_daemon
+}
+MHD_CACHE=()
 
 # ---------------------------------------------------------------- driver
 want=("$@"); [ ${#want[@]} -eq 0 ] && want=("${ORDER[@]}")

@@ -1,0 +1,67 @@
+diff --git a/configure b/configure
+index 8d2f3f4..5781c3e 100755
+--- a/configure
++++ b/configure
+@@ -3832,6 +3832,10 @@ then
+ 	*-*-wasi)
+ 	    ac_sys_system=WASI
+ 	    ;;
++	aarch64-*-elf)
++	    # Nintendo Switch 2 homebrew (libounce + newlib, static only)
++	    ac_sys_system=Switch2
++	    ;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -3896,6 +3900,9 @@ if test "$cross_compiling" = yes; then
+ 	wasm32-*-* | wasm64-*-*)
+ 		_host_cpu=$host_cpu
+ 		;;
++	aarch64-*-elf)
++		_host_cpu=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -23698,6 +23705,8 @@ case $ac_sys_system in #(
+     MODULES_SETUP_STDLIB=Modules/Setup.stdlib ;; #(
+   WASI) :
+     MODULES_SETUP_STDLIB=Modules/Setup.stdlib ;; #(
++  Switch2) :
++    MODULES_SETUP_STDLIB=Modules/Setup.stdlib ;; #(
+   *) :
+     MODULES_SETUP_STDLIB=
+  ;;
+diff --git a/configure.ac b/configure.ac
+index 52d5c1f..9aa4544 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -554,6 +554,10 @@ then
+ 	*-*-wasi)
+ 	    ac_sys_system=WASI
+ 	    ;;
++	aarch64-*-elf)
++	    # Nintendo Switch 2 homebrew (libounce + newlib, static only)
++	    ac_sys_system=Switch2
++	    ;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -614,6 +618,9 @@ if test "$cross_compiling" = yes; then
+ 	wasm32-*-* | wasm64-*-*)
+ 		_host_cpu=$host_cpu
+ 		;;
++	aarch64-*-elf)
++		_host_cpu=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -6921,6 +6928,7 @@ AC_MSG_CHECKING([for additional Modules/Setup files])
+ AS_CASE([$ac_sys_system],
+     [Emscripten], [MODULES_SETUP_STDLIB=Modules/Setup.stdlib],
+     [WASI], [MODULES_SETUP_STDLIB=Modules/Setup.stdlib],
++    [Switch2], [MODULES_SETUP_STDLIB=Modules/Setup.stdlib],
+     [MODULES_SETUP_STDLIB=]
+ )
+ AC_MSG_RESULT([$MODULES_SETUP_STDLIB])

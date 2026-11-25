@@ -9,8 +9,8 @@ diff -ru a/crypto/armcap.c b/crypto/armcap.c
 +#if defined(__SWITCH__) && __ARM_MAX_ARCH__ >= 7
 +/*
 + * Horizon (libnx/libounce) has no getauxval(), no sigsetjmp() and no SIGILL
-+ * delivery, so probing would kill the process. The Switch 2 CPU (Cortex-A78C,
-+ * built with +crypto) has NEON, AES, PMULL, SHA1 and SHA256; not SHA512/SHA3.
++ * delivery, so probing would kill the process. On Switch 2 hardware the first
++ * ARMv8-crypto SHA-256 digest killed the process: advertise NEON only.
 + * MIDR_EL1 is not readable from EL0, so ARMV8_CPUID and the A72/N1 RSA
 + * tuning stay off. OPENSSL_armcap is honoured as on other platforms.
 + */
@@ -33,8 +33,8 @@ diff -ru a/crypto/armcap.c b/crypto/armcap.c
 +        OPENSSL_armcap_P = (unsigned int)strtoul(e, NULL, 0);
 +        return;
 +    }
-+    OPENSSL_armcap_P = ARMV7_NEON | ARMV8_AES | ARMV8_PMULL | ARMV8_SHA1
-+                       | ARMV8_SHA256;
++    /* No ARMV8_AES/PMULL/SHA1/SHA256: see above (Kodi rev 16 nettest). */
++    OPENSSL_armcap_P = ARMV7_NEON;
 +}
 +#elif __ARM_MAX_ARCH__ < 7
  void OPENSSL_cpuid_setup(void)

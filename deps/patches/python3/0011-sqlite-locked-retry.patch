@@ -1,0 +1,167 @@
+diff --git a/Modules/_sqlite/connection.c b/Modules/_sqlite/connection.c
+index e3650de..37cc572 100644
+--- a/Modules/_sqlite/connection.c
++++ b/Modules/_sqlite/connection.c
+@@ -561,9 +561,9 @@ pysqlite_connection_commit_impl(pysqlite_Connection *self)
+ 
+         Py_BEGIN_ALLOW_THREADS
+         sqlite3_stmt *statement;
+-        rc = sqlite3_prepare_v2(self->db, "COMMIT", 7, &statement, NULL);
++        rc = pysqlite_prepare_retry(self->db, "COMMIT", 7, &statement, NULL);
+         if (rc == SQLITE_OK) {
+-            (void)sqlite3_step(statement);
++            (void)pysqlite_step_retry(statement);
+             rc = sqlite3_finalize(statement);
+         }
+         Py_END_ALLOW_THREADS
+@@ -598,9 +598,9 @@ pysqlite_connection_rollback_impl(pysqlite_Connection *self)
+ 
+         Py_BEGIN_ALLOW_THREADS
+         sqlite3_stmt *statement;
+-        rc = sqlite3_prepare_v2(self->db, "ROLLBACK", 9, &statement, NULL);
++        rc = pysqlite_prepare_retry(self->db, "ROLLBACK", 9, &statement, NULL);
+         if (rc == SQLITE_OK) {
+-            (void)sqlite3_step(statement);
++            (void)pysqlite_step_retry(statement);
+             rc = sqlite3_finalize(statement);
+         }
+         Py_END_ALLOW_THREADS
+diff --git a/Modules/_sqlite/cursor.c b/Modules/_sqlite/cursor.c
+index 3f5cfef..af128d5 100644
+--- a/Modules/_sqlite/cursor.c
++++ b/Modules/_sqlite/cursor.c
+@@ -490,9 +490,9 @@ begin_transaction(pysqlite_Connection *self)
+     assert(len <= 9);
+ #endif
+     (void)strcat(begin_stmt, self->isolation_level);
+-    rc = sqlite3_prepare_v2(self->db, begin_stmt, -1, &statement, NULL);
++    rc = pysqlite_prepare_retry(self->db, begin_stmt, -1, &statement, NULL);
+     if (rc == SQLITE_OK) {
+-        (void)sqlite3_step(statement);
++        (void)pysqlite_step_retry(statement);
+         rc = sqlite3_finalize(statement);
+     }
+     Py_END_ALLOW_THREADS
+@@ -526,6 +526,20 @@ stmt_step(sqlite3_stmt *statement)
+     return rc;
+ }
+ 
++/* First step of a freshly bound statement: retried on SQLITE_LOCKED on Switch 2 (util.h).
++   Later steps (rows already returned) use stmt_step() and are never retried. */
++static inline int
++stmt_step_first(sqlite3_stmt *statement)
++{
++    int rc;
++
++    Py_BEGIN_ALLOW_THREADS
++    rc = pysqlite_step_retry(statement);
++    Py_END_ALLOW_THREADS
++
++    return rc;
++}
++
+ static int
+ bind_param(pysqlite_state *state, pysqlite_Statement *self, int pos,
+            PyObject *parameter)
+@@ -892,7 +906,7 @@ _pysqlite_query_execute(pysqlite_Cursor* self, int multiple, PyObject* operation
+             goto error;
+         }
+ 
+-        rc = stmt_step(self->statement->st);
++        rc = stmt_step_first(self->statement->st);
+         if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+             if (PyErr_Occurred()) {
+                 /* there was an error that occurred in a user-defined callback */
+@@ -1070,12 +1084,14 @@ pysqlite_cursor_executescript_impl(pysqlite_Cursor *self,
+ 
+         Py_BEGIN_ALLOW_THREADS
+         sqlite3_stmt *stmt;
+-        rc = sqlite3_prepare_v2(db, sql_script, (int)sql_len + 1, &stmt,
+-                                &tail);
++        rc = pysqlite_prepare_retry(db, sql_script, (int)sql_len + 1, &stmt,
++                                    &tail);
+         if (rc == SQLITE_OK) {
+-            do {
++            /* only the first step may be retried (util.h): no row returned yet */
++            rc = pysqlite_step_retry(stmt);
++            while (rc == SQLITE_ROW) {
+                 rc = sqlite3_step(stmt);
+-            } while (rc == SQLITE_ROW);
++            }
+             rc = sqlite3_finalize(stmt);
+         }
+         Py_END_ALLOW_THREADS
+diff --git a/Modules/_sqlite/statement.c b/Modules/_sqlite/statement.c
+index aee4607..ef4ab86 100644
+--- a/Modules/_sqlite/statement.c
++++ b/Modules/_sqlite/statement.c
+@@ -56,7 +56,7 @@ pysqlite_statement_create(pysqlite_Connection *connection, PyObject *sql)
+     const char *tail;
+     int rc;
+     Py_BEGIN_ALLOW_THREADS
+-    rc = sqlite3_prepare_v2(db, sql_cstr, (int)size + 1, &stmt, &tail);
++    rc = pysqlite_prepare_retry(db, sql_cstr, (int)size + 1, &stmt, &tail);
+     Py_END_ALLOW_THREADS
+ 
+     if (rc != SQLITE_OK) {
+diff --git a/Modules/_sqlite/util.h b/Modules/_sqlite/util.h
+index a22bcd8..0d4b76c 100644
+--- a/Modules/_sqlite/util.h
++++ b/Modules/_sqlite/util.h
+@@ -37,4 +37,56 @@ int _pysqlite_seterror(pysqlite_state *state, sqlite3 *db);
+ 
+ sqlite_int64 _pysqlite_long_as_int64(PyObject * value);
+ 
++/* Switch 2 (Kodi port): Kodi enables SQLite's process-wide shared cache (a second open of a file
++ * that is open for writing fails on this file system), so every connection of the process, the
++ * add-ons' included, shares one cache per database file. A table or schema held by another
++ * connection is then reported as SQLITE_LOCKED / SQLITE_LOCKED_SHAREDCACHE, for which SQLite never
++ * calls the busy handler (Connection timeout= covers only SQLITE_BUSY). These wrappers retry such a
++ * prepare or first step with a bounded backoff (1 ms doubling to 50 ms, about 2 s in all), as
++ * Kodi's own ExecRetry (xbmc/dbwrappers/sqlitedataset.cpp) does. Call them with the GIL released.
++ * pysqlite_step_retry() is only used for a statement's FIRST step (no row returned yet): it resets
++ * the statement (bindings are kept) before stepping again. On other platforms both are the plain
++ * SQLite calls. */
++#ifdef __SWITCH__
++static inline int
++pysqlite_locked_backoff(int rc, int *waited_ms, int *step_ms)
++{
++    if ((rc & 0xff) != SQLITE_LOCKED || *waited_ms >= 2000) {
++        return 0;
++    }
++    sqlite3_sleep(*step_ms);
++    *waited_ms += *step_ms;
++    *step_ms = *step_ms < 50 ? *step_ms * 2 : 50;
++    return 1;
++}
++#endif
++
++static inline int
++pysqlite_prepare_retry(sqlite3 *db, const char *sql, int nbyte,
++                       sqlite3_stmt **stmt, const char **tail)
++{
++    int rc = sqlite3_prepare_v2(db, sql, nbyte, stmt, tail);
++#ifdef __SWITCH__
++    int waited_ms = 0, step_ms = 1;
++    while (pysqlite_locked_backoff(rc, &waited_ms, &step_ms)) {
++        rc = sqlite3_prepare_v2(db, sql, nbyte, stmt, tail);
++    }
++#endif
++    return rc;
++}
++
++static inline int
++pysqlite_step_retry(sqlite3_stmt *stmt)
++{
++    int rc = sqlite3_step(stmt);
++#ifdef __SWITCH__
++    int waited_ms = 0, step_ms = 1;
++    while (pysqlite_locked_backoff(rc, &waited_ms, &step_ms)) {
++        (void)sqlite3_reset(stmt);
++        rc = sqlite3_step(stmt);
++    }
++#endif
++    return rc;
++}
++
+ #endif

@@ -8,3 +8,8 @@ deps/src-extra/
 deps/build/
 testmedia/matrix/
 *.log
+build-diag/
+out-diag/
+dist/
+addons-bundle/zips/
+addons-bundle/addons/

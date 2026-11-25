@@ -1,0 +1,74 @@
+diff --git a/Modules/_posixsubprocess_switch2.c b/Modules/_posixsubprocess_switch2.c
+new file mode 100644
+index 0000000..5c876dc
+--- /dev/null
++++ b/Modules/_posixsubprocess_switch2.c
+@@ -0,0 +1,40 @@
++/* Switch 2 (libounce): there is no fork()/exec(), so _posixsubprocess is a
++   stub that imports (subprocess, multiprocessing.util and add-ons import it)
++   and whose fork_exec() raises OSError(ENOSYS). subprocess.Popen itself
++   already refuses earlier with ENOTSUP (sys.platform "switch2", patch 0005). */
++#include "Python.h"
++#include <errno.h>
++
++static PyObject *
++subprocess_fork_exec(PyObject *module, PyObject *args)
++{
++    (void)module;
++    (void)args;
++    errno = ENOSYS;
++    return PyErr_SetFromErrno(PyExc_OSError);
++}
++
++static PyMethodDef module_methods[] = {
++    {"fork_exec", subprocess_fork_exec, METH_VARARGS,
++     "fork_exec(...) -> raises OSError(ENOSYS): no processes on Switch 2"},
++    {NULL, NULL, 0, NULL}
++};
++
++static PyModuleDef_Slot _posixsubprocess_slots[] = {
++    {0, NULL}
++};
++
++static struct PyModuleDef _posixsubprocessmodule = {
++    PyModuleDef_HEAD_INIT,
++    .m_name = "_posixsubprocess",
++    .m_doc = "Stub: no fork/exec on Switch 2 (libounce).",
++    .m_size = 0,
++    .m_methods = module_methods,
++    .m_slots = _posixsubprocess_slots,
++};
++
++PyMODINIT_FUNC
++PyInit__posixsubprocess(void)
++{
++    return PyModuleDef_Init(&_posixsubprocessmodule);
++}
+diff --git a/Modules/switch2_compat.c b/Modules/switch2_compat.c
+new file mode 100644
+index 0000000..f8bea3e
+--- /dev/null
++++ b/Modules/switch2_compat.c
+@@ -0,0 +1,22 @@
++/* Switch 2 (libounce + newlib): the passwd/group database functions that
++   <pwd.h>/<grp.h> declare but newlib does not implement. The console has no
++   user database: every lookup fails (pwd/grp raise KeyError, getpwall() and
++   getgrall() return []), so `import pwd, grp` works for tarfile, zipfile,
++   shutil, pathlib and getpass's guarded uses. */
++#include <errno.h>
++#include <stddef.h>
++#include <sys/types.h>
++#include <pwd.h>
++#include <grp.h>
++
++struct passwd *getpwuid(uid_t uid) { (void)uid; errno = ENOENT; return NULL; }
++struct passwd *getpwnam(const char *name) { (void)name; errno = ENOENT; return NULL; }
++struct passwd *getpwent(void) { return NULL; }
++void setpwent(void) {}
++void endpwent(void) {}
++
++struct group *getgrgid(gid_t gid) { (void)gid; errno = ENOENT; return NULL; }
++struct group *getgrnam(const char *name) { (void)name; errno = ENOENT; return NULL; }
++struct group *getgrent(void) { return NULL; }
++void setgrent(void) {}
++void endgrent(void) {}

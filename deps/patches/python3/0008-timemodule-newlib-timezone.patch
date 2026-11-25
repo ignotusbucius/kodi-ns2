@@ -1,0 +1,14 @@
+diff --git a/Modules/timemodule.c b/Modules/timemodule.c
+index b8e0e48..b0bf3a5 100644
+--- a/Modules/timemodule.c
++++ b/Modules/timemodule.c
+@@ -39,7 +39,8 @@
+ #  include <sanitizer/msan_interface.h>
+ #endif
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__SWITCH__)
++   /* newlib (Switch 2) only declares the reserved names _timezone/_daylight */
+ #  define _Py_timezone _timezone
+ #  define _Py_daylight _daylight
+ #  define _Py_tzname _tzname

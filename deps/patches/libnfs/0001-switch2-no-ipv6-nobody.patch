@@ -1,0 +1,88 @@
+diff --git a/lib/init.c b/lib/init.c
+index d4b1331..1203b40 100644
+--- a/lib/init.c
++++ b/lib/init.c
+@@ -101,7 +101,7 @@ struct rpc_context *rpc_init_context(void)
+ 	rpc->fd = -1;
+ 	rpc->tcp_syncnt = RPC_PARAM_UNDEFINED;
+ 	rpc->pagecache_ttl = NFS_PAGECACHE_DEFAULT_TTL;
+-#if defined(WIN32) || defined(ANDROID) || defined(PS3_PPU)
++#if defined(WIN32) || defined(ANDROID) || defined(PS3_PPU) || defined(__SWITCH__)
+ 	rpc->uid = 65534;
+ 	rpc->gid = 65534;
+ #else
+diff --git a/lib/libnfs-zdr.c b/lib/libnfs-zdr.c
+index 1896851..6789139 100644
+--- a/lib/libnfs-zdr.c
++++ b/lib/libnfs-zdr.c
+@@ -599,7 +599,8 @@ struct AUTH *libnfs_authunix_create(const char *host, uint32_t uid, uint32_t gid
+ 
+ struct AUTH *libnfs_authunix_create_default(void)
+ {
+-#if defined(WIN32) || defined(PS3_PPU)
++#if defined(WIN32) || defined(PS3_PPU) || defined(__SWITCH__)
++	/* Switch 2: newlib has no getuid()/getgid(); nobody, as on Windows. */
+ 	return libnfs_authunix_create("libnfs", 65534, 65534, 0, NULL);
+ #else
+ 	return libnfs_authunix_create("libnfs", getuid(), getgid(), 0, NULL);
+diff --git a/lib/socket.c b/lib/socket.c
+index e025be5..cb8a35d 100644
+--- a/lib/socket.c
++++ b/lib/socket.c
+@@ -621,6 +621,7 @@ rpc_connect_sockaddr_async(struct rpc_context *rpc)
+ 		}
+ #endif
+ 		break;
++#ifndef __SWITCH__
+ 	case AF_INET6:
+ 		socksize = sizeof(struct sockaddr_in6);
+ 		rpc->fd = create_socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+@@ -635,6 +636,7 @@ rpc_connect_sockaddr_async(struct rpc_context *rpc)
+ 		}
+ #endif
+ 		break;
++#endif /* !__SWITCH__ */
+ 	default:
+ 		rpc_set_error(rpc, "Can not handle AF_FAMILY:%d", s->ss_family);
+ 		return -1;
+@@ -712,7 +714,7 @@ rpc_connect_sockaddr_async(struct rpc_context *rpc)
+                                                 sizeof(struct sockaddr_in);
+ #endif
+ 					break;
+-#if !defined(PS3_PPU) && !defined(PS2_EE)
++#if !defined(PS3_PPU) && !defined(PS2_EE) && !defined(__SWITCH__)
+ 				case AF_INET6:
+ 					sin6->sin6_port = port;
+ 					sin6->sin6_family = AF_INET6;
+@@ -770,7 +772,7 @@ rpc_set_sockaddr(struct rpc_context *rpc, const char *server, int port)
+                         sizeof(struct sockaddr_in);
+ #endif
+ 		break;
+-#if !defined(PS3_PPU) && !defined(PS2_EE)
++#if !defined(PS3_PPU) && !defined(PS2_EE) && !defined(__SWITCH__)
+ 	case AF_INET6:
+ 		((struct sockaddr_in6 *)&rpc->s)->sin6_family = ai->ai_family;
+ 		((struct sockaddr_in6 *)&rpc->s)->sin6_port = htons(port);
+diff --git a/lib/switch2_compat.h b/lib/switch2_compat.h
+new file mode 100644
+index 0000000..bc3dfc5
+--- /dev/null
++++ b/lib/switch2_compat.h
+@@ -0,0 +1,17 @@
++/* Switch 2 (Kodi port): what libnfs expects from Linux headers that newlib/libounce do not give
++ * the same way. Force-included into every libnfs source (deps/build-deps.sh build_libnfs). */
++#ifndef LIBNFS_SWITCH2_COMPAT_H
++#define LIBNFS_SWITCH2_COMPAT_H
++#include <sys/types.h>
++#include <time.h>
++#include <utime.h>      /* struct utimbuf (its header needs time_t first) */
++#include <arpa/inet.h>  /* htonl/ntohl: libounce has them here only, not in <netinet/in.h> */
++#include <netinet/in.h>
++#ifndef SOL_TCP
++#define SOL_TCP IPPROTO_TCP
++#endif
++#ifndef major
++#define major(dev) ((unsigned int)(((dev) >> 8) & 0xfff))
++#define minor(dev) ((unsigned int)(((dev) & 0xff) | (((dev) >> 12) & 0xfff00)))
++#endif
++#endif

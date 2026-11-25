@@ -87,6 +87,60 @@ index 811aa3f..e534132 100644
                   -DPCRE_SUPPORT_UTF=ON
                   -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON
                   -DPCRE_SUPPORT_LIBZ=OFF
+diff --git a/cmake/modules/FindPython.cmake b/cmake/modules/FindPython.cmake
+index 56d320e..9fe3a5f 100644
+--- a/cmake/modules/FindPython.cmake
++++ b/cmake/modules/FindPython.cmake
+@@ -27,8 +27,37 @@
+ # --------
+ #
+ 
++if(CORE_SYSTEM_NAME STREQUAL switch2)
++  # Switch 2: the static CPython 3.11.7 of homebrew/kodi/deps/build-deps.sh (python3) in DEPENDS_PATH.
++  # No interpreter to run and no shared library, so FindPython3 is not used: every extension module
++  # is compiled into libpython3.11.a (Modules/config.c); its bundled libmpdec/expat and the static
++  # libraries those modules use follow it on the link line.
++  find_path(PYTHON_INCLUDE_DIR NAMES Python.h PATHS ${DEPENDS_PATH}/include/python3.11 NO_DEFAULT_PATH)
++  find_library(PYTHON_LIBRARY NAMES libpython3.11.a PATHS ${DEPENDS_PATH}/lib NO_DEFAULT_PATH)
++  find_library(PYTHON_MPDEC_LIBRARY NAMES libpython3.11-mpdec.a PATHS ${DEPENDS_PATH}/lib NO_DEFAULT_PATH)
++  find_library(PYTHON_EXPAT_LIBRARY NAMES libpython3.11-expat.a PATHS ${DEPENDS_PATH}/lib NO_DEFAULT_PATH)
++  find_library(PYTHON_SSL_LIBRARY NAMES libssl.a PATHS ${DEPENDS_PATH}/lib NO_DEFAULT_PATH)
++  find_library(PYTHON_CRYPTO_LIBRARY NAMES libcrypto.a PATHS ${DEPENDS_PATH}/lib NO_DEFAULT_PATH)
++  find_library(PYTHON_SQLITE_LIBRARY NAMES libsqlite3.a PATHS ${DEPENDS_PATH}/lib NO_DEFAULT_PATH)
++  find_library(PYTHON_LZMA_LIBRARY NAMES liblzma.a)
++  find_library(PYTHON_BZ2_LIBRARY NAMES libbz2.a)
++  find_library(PYTHON_Z_LIBRARY NAMES libz.a)
++  include(FindPackageHandleStandardArgs)
++  find_package_handle_standard_args(Python3 NAME_MISMATCHED REQUIRED_VARS PYTHON_LIBRARY PYTHON_INCLUDE_DIR
++                                    PYTHON_MPDEC_LIBRARY PYTHON_EXPAT_LIBRARY PYTHON_SSL_LIBRARY
++                                    PYTHON_CRYPTO_LIBRARY PYTHON_SQLITE_LIBRARY PYTHON_LZMA_LIBRARY
++                                    PYTHON_BZ2_LIBRARY PYTHON_Z_LIBRARY)
++  if(Python3_FOUND)
++    set(Python3_VERSION_MAJOR 3)
++    set(Python3_VERSION_MINOR 11)
++    set(Python3_INCLUDE_DIRS ${PYTHON_INCLUDE_DIR})
++    set(Python3_LIBRARIES ${PYTHON_LIBRARY} ${PYTHON_MPDEC_LIBRARY} ${PYTHON_EXPAT_LIBRARY}
++                          ${PYTHON_SSL_LIBRARY} ${PYTHON_CRYPTO_LIBRARY} ${PYTHON_SQLITE_LIBRARY}
++                          ${PYTHON_LZMA_LIBRARY} ${PYTHON_BZ2_LIBRARY} ${PYTHON_Z_LIBRARY} m)
++    set(Python3_LINK_OPTIONS "")
++  endif()
+ # for Depends/Windows builds, set search root dir to libdir path
+-if(KODI_DEPENDSBUILD
++elseif(KODI_DEPENDSBUILD
+    OR CMAKE_SYSTEM_NAME STREQUAL WINDOWS
+    OR CMAKE_SYSTEM_NAME STREQUAL WindowsStore)
+   set(Python3_USE_STATIC_LIBS TRUE)
+@@ -57,7 +86,9 @@ if(PYTHON_VER)
+   unset(PYTHON_VER CACHE)
+ endif()
+ 
+-find_package(Python3 ${VERSION} ${EXACT_VER} COMPONENTS Development)
++if(NOT CORE_SYSTEM_NAME STREQUAL switch2)
++  find_package(Python3 ${VERSION} ${EXACT_VER} COMPONENTS Development)
++endif()
+ 
+ if(KODI_DEPENDSBUILD)
+   find_library(FFI_LIBRARY ffi REQUIRED)
 diff --git a/cmake/modules/FindTinyXML2.cmake b/cmake/modules/FindTinyXML2.cmake
 index a75c370..ad981b8 100644
 --- a/cmake/modules/FindTinyXML2.cmake
@@ -112,14 +166,21 @@ index 0000000..cd08eec
 +set(PLATFORM_GLOBAL_TARGET_DEPS "")
 diff --git a/cmake/scripts/switch2/ArchSetup.cmake b/cmake/scripts/switch2/ArchSetup.cmake
 new file mode 100644
-index 0000000..1294d47
+index 0000000..4f5201d
 --- /dev/null
 +++ b/cmake/scripts/switch2/ArchSetup.cmake
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,61 @@
 +# Switch 2 (kaiHEN / libounce): static newlib + libounce, AArch64, GLES via OunceVK EGL.
 +set(CORE_MAIN_SOURCE ${CMAKE_SOURCE_DIR}/xbmc/platform/switch2/main.cpp)
 +
 +list(APPEND ARCH_DEFINES -DTARGET_POSIX -DTARGET_SWITCH2 -D__SWITCH__ -D__SWITCH2__ -D_GNU_SOURCE)
++# Diagnostics build: OpenSSL trace wrappers + crumb sink, memory monitor, thread/TLS-key logging,
++# OpenSSL self-test (xbmc/platform/switch2). The release build keeps only the correctness wrappers,
++# the OpenSSL warm-up, the crash/FATAL handlers and a few boot.txt milestones.
++option(ENABLE_SWITCH2_DIAG "Switch 2 diagnostics instruments" OFF)
++if(ENABLE_SWITCH2_DIAG)
++  list(APPEND ARCH_DEFINES -DSWITCH2_DIAG=1)
++endif()
 +set(SYSTEM_DEFINES -D__STDC_CONSTANT_MACROS -D_FILE_OFFSET_BITS=64)
 +set(PLATFORM_DIR platform/switch2)
 +set(PLATFORMDEFS_DIR platform/posix)
@@ -129,7 +190,9 @@ index 0000000..1294d47
 +set(USE_INTERNAL_LIBS ON)
 +
 +# No shared objects, no dlopen: binary add-ons and wrapped DLLs are not available.
-+set(ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
++# Python add-ons: a static CPython 3.11 with every extension module built in (cmake/modules/FindPython.cmake,
++# homebrew/kodi/deps/build-deps.sh python3); its stdlib is packaged to special://xbmc/system/python.
++set(ENABLE_PYTHON ON CACHE BOOL "" FORCE)
 +set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 +set(ENABLE_UPNP OFF CACHE BOOL "" FORCE)
 +set(ENABLE_AIRTUNES OFF CACHE BOOL "" FORCE)
@@ -156,12 +219,24 @@ index 0000000..1294d47
 +# Kodi's internal fmt/tinyxml2/crossguid are found as CMake config packages and are then not put on
 +# the link line on this platform (Linux gets fmt through spdlog's target). Link them last, everywhere.
 +set(CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_CXX_STANDARD_LIBRARIES} /k/prefix/lib/libspdlog.a /k/prefix/lib/libfmt.a /k/prefix/lib/libtinyxml2.a /k/prefix/lib/libcrossguid.a /k/prefix/lib/libuuid.a")
++# libdav1d (AV1 software decoding through FFmpeg's libdav1d wrapper, deps/build-deps.sh dav1d): FFmpeg's
++# libraries are found without their static Libs.private, so it goes last on the line as well.
++set(CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_CXX_STANDARD_LIBRARIES} /k/prefix/lib/libdav1d.a")
++# inputstream.adaptive, linked statically (homebrew/kodi/isa/INTEGRATE.md).
++option(ENABLE_STATIC_ISA "Link inputstream.adaptive into kodi.bin" ON)
++set(STATIC_ISA_LIBRARY /k/isa/out/lib/libkodiaddon_inputstream.adaptive.a CACHE FILEPATH "")
++if(ENABLE_STATIC_ISA)
++  if(NOT EXISTS ${STATIC_ISA_LIBRARY})
++    message(FATAL_ERROR "${STATIC_ISA_LIBRARY} missing: run homebrew/kodi/isa/build.sh all")
++  endif()
++  set(CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_CXX_STANDARD_LIBRARIES} ${STATIC_ISA_LIBRARY}")
++endif()
 diff --git a/cmake/scripts/switch2/Install.cmake b/cmake/scripts/switch2/Install.cmake
 new file mode 100644
-index 0000000..4547110
+index 0000000..084c1bd
 --- /dev/null
 +++ b/cmake/scripts/switch2/Install.cmake
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,67 @@
 +# Switch 2 packaging: elf -> nro, plus the data tree copied to sdmc:/switch/kodi.
 +set(APP_BINARY ${APP_NAME_LC}${APP_BINARY_SUFFIX})
 +# Threads created without attributes get 1 MiB stacks (xbmc/platform/switch2/PosixCompat.cpp).
@@ -179,7 +254,56 @@ index 0000000..4547110
 +target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=clock_gettime)
 +# abort() logs a backtrace to sdmc:/switch/kodi/crash.txt first (CrashHandler.cpp).
 +target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=abort)
++# fcntl: libounce's is socket-only (F_GETFL/F_SETFL) and returns 95 for every other command; the wrapper
++# answers file fds and the other commands itself (PosixCompat.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=fcntl)
++# Process-ending paths that raise no CPU exception: one FATAL line to boot.txt/crash.txt, then the real
++# function (CrashHandler.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=svcBreak -Wl,--wrap=diagAbortWithResult
++                                           -Wl,--wrap=__assert_func -Wl,--wrap=_Py_FatalErrorFunc
++                                           -Wl,--wrap=_Py_FatalErrorFormat)
 +include(${CMAKE_SOURCE_DIR}/cmake/scripts/switch2/Package.cmake OPTIONAL)
++if(ENABLE_SWITCH2_DIAG)
++  # OpenSSL breadcrumbs, active only with sdmc:/switch/kodi/trace-ossl.flag (OsslTrace.cpp, same list).
++  set(SWITCH2_OSSL_TRACE_WRAPS
++      -Wl,--wrap=EVP_MD_fetch -Wl,--wrap=EVP_MD_CTX_new -Wl,--wrap=EVP_DigestInit_ex
++      -Wl,--wrap=EVP_DigestInit_ex2 -Wl,--wrap=EVP_MD_up_ref -Wl,--wrap=EVP_MD_free
++      -Wl,--wrap=evp_generic_fetch -Wl,--wrap=evp_md_new -Wl,--wrap=ossl_method_store_new
++      -Wl,--wrap=ossl_method_store_fetch -Wl,--wrap=ossl_method_store_add
++      -Wl,--wrap=ossl_method_store_cache_get -Wl,--wrap=ossl_method_store_cache_set
++      -Wl,--wrap=ossl_method_lock_store -Wl,--wrap=ossl_method_unlock_store
++      -Wl,--wrap=ossl_method_construct
++      -Wl,--wrap=ossl_parse_property -Wl,--wrap=ossl_parse_query -Wl,--wrap=ossl_property_merge
++      -Wl,--wrap=ossl_property_name -Wl,--wrap=ossl_property_value
++      -Wl,--wrap=ossl_property_match_count -Wl,--wrap=ossl_property_free
++      -Wl,--wrap=ossl_property_is_enabled -Wl,--wrap=ossl_ctx_global_properties
++      -Wl,--wrap=ossl_provider_ctx -Wl,--wrap=ossl_provider_libctx -Wl,--wrap=ossl_provider_up_ref
++      -Wl,--wrap=ossl_provider_test_operation_bit -Wl,--wrap=ossl_provider_set_operation_bit
++      -Wl,--wrap=ossl_provider_query_operation -Wl,--wrap=ossl_provider_unquery_operation
++      -Wl,--wrap=ossl_provider_doall_activated -Wl,--wrap=ossl_namemap_stored
++      -Wl,--wrap=ossl_namemap_name2num -Wl,--wrap=ossl_namemap_name2num_n
++      -Wl,--wrap=ossl_namemap_add_name -Wl,--wrap=ossl_namemap_add_names
++      -Wl,--wrap=ossl_namemap_num2name -Wl,--wrap=ossl_lib_ctx_get_data -Wl,--wrap=OPENSSL_LH_new
++      -Wl,--wrap=OPENSSL_LH_insert -Wl,--wrap=OPENSSL_LH_retrieve -Wl,--wrap=ERR_set_mark
++      -Wl,--wrap=ERR_pop_to_mark -Wl,--wrap=ERR_clear_last_mark -Wl,--wrap=ERR_new
++      -Wl,--wrap=ERR_set_debug -Wl,--wrap=ERR_clear_error -Wl,--wrap=ossl_err_get_state_int
++      -Wl,--wrap=ossl_init_thread_start -Wl,--wrap=CRYPTO_THREAD_run_once
++      -Wl,--wrap=CRYPTO_THREAD_init_local -Wl,--wrap=CRYPTO_THREAD_set_local
++      -Wl,--wrap=CRYPTO_THREAD_get_local -Wl,--wrap=CRYPTO_THREAD_lock_new
++      -Wl,--wrap=CRYPTO_THREAD_read_lock -Wl,--wrap=CRYPTO_THREAD_write_lock
++      -Wl,--wrap=CRYPTO_THREAD_unlock -Wl,--wrap=CRYPTO_malloc -Wl,--wrap=CRYPTO_zalloc
++      -Wl,--wrap=CRYPTO_realloc -Wl,--wrap=CRYPTO_free)
++  target_link_options(${APP_NAME_LC} PRIVATE ${SWITCH2_OSSL_TRACE_WRAPS})
++  # TLS keys: every pthread_key_create/delete and failing pthread_setspecific logged (PosixCompat.cpp).
++  target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=pthread_key_create -Wl,--wrap=pthread_key_delete
++                                             -Wl,--wrap=pthread_setspecific)
++endif()
++# libounce's SHA-256 uses the SHA2 instructions unconditionally: curl's Curl_libnx_sha256sum goes to
++# OpenSSL's SHA256() instead (PosixCompat.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=sha256CalculateHash)
++# socketpair: libounce's is an ENOSYS stub; emulated over loopback TCP/UDP for libmicrohttpd's
++# wake-up channel, CPython's socket.socketpair and curl's multi wake-up (PosixCompat.cpp).
++target_link_options(${APP_NAME_LC} PRIVATE -Wl,--wrap=socketpair)
 diff --git a/cmake/scripts/switch2/Macros.cmake b/cmake/scripts/switch2/Macros.cmake
 new file mode 100644
 index 0000000..7123c65
@@ -232,6 +356,20 @@ index 0000000..8291f3f
 +xbmc/platform/common/speech         platform/common/speech
 +xbmc/input/touch                    input/touch
 +xbmc/input/touch/generic            input/touch/generic
+diff --git a/xbmc/addons/addoninfo/AddonInfoBuilder.cpp b/xbmc/addons/addoninfo/AddonInfoBuilder.cpp
+index 95ecac1..1d12108 100644
+--- a/xbmc/addons/addoninfo/AddonInfoBuilder.cpp
++++ b/xbmc/addons/addoninfo/AddonInfoBuilder.cpp
+@@ -771,7 +771,8 @@ bool CAddonInfoBuilder::GetTextList(const TiXmlElement* element, const std::stri
+ 
+ const char* CAddonInfoBuilder::GetPlatformLibraryName(const TiXmlElement* element)
+ {
+-  const char* libraryName;
++  // nullptr on platforms none of the branches below name (Switch 2): was left uninitialised.
++  const char* libraryName = nullptr;
+ #if defined(TARGET_ANDROID)
+   libraryName = element->Attribute("library_android");
+ #elif defined(TARGET_LINUX) || defined(TARGET_FREEBSD)
 diff --git a/xbmc/application/Application.cpp b/xbmc/application/Application.cpp
 index a05ffab..a6dc4e6 100644
 --- a/xbmc/application/Application.cpp
@@ -247,6 +385,26 @@ index a05ffab..a6dc4e6 100644
    if (!profileManager->UsingLoginScreen())
      CServiceBroker::GetServiceAddons().Start();
  
+diff --git a/xbmc/application/ApplicationPowerHandling.cpp b/xbmc/application/ApplicationPowerHandling.cpp
+index 8000a7e..5b883bc 100644
+--- a/xbmc/application/ApplicationPowerHandling.cpp
++++ b/xbmc/application/ApplicationPowerHandling.cpp
+@@ -224,6 +224,15 @@ bool CApplicationPowerHandling::WakeUpScreenSaver(bool bPowerOffKeyPressed /* =
+ 
+ void CApplicationPowerHandling::CheckOSScreenSaverInhibitionSetting()
+ {
++#if defined(TARGET_SWITCH2)
++  // Switch 2 (handheld, battery): the OS "screen saver" is the console's idle dimming and auto-sleep
++  // (appletSetMediaPlaybackState). Kodi's own screen saver keeps working, but the console is only held
++  // awake by the activity inhibitor of CheckScreenSaverAndDPMS (unpaused video, audio with
++  // "disable for audio", InhibitScreensaver), not for the whole session.
++  if (m_globalScreensaverInhibitor)
++    m_globalScreensaverInhibitor.Release();
++  return;
++#endif
+   // Kodi screen saver overrides OS one: always inhibit OS screen saver then
+   // except when DPMS is active (inhibiting the screen saver then might also
+   // disable DPMS again)
 diff --git a/xbmc/cores/AudioEngine/CMakeLists.txt b/xbmc/cores/AudioEngine/CMakeLists.txt
 index debf3dd..25c53b6 100644
 --- a/xbmc/cores/AudioEngine/CMakeLists.txt
@@ -608,6 +766,170 @@ index ba80262..b6d7ede 100644
  #else
  #   include <sys/uio.h>                                      /* struct iovec */
  #endif
+diff --git a/xbmc/cores/VideoPlayer/DVDOverlayContainer.cpp b/xbmc/cores/VideoPlayer/DVDOverlayContainer.cpp
+index ad3b873..56321d2 100644
+--- a/xbmc/cores/VideoPlayer/DVDOverlayContainer.cpp
++++ b/xbmc/cores/VideoPlayer/DVDOverlayContainer.cpp
+@@ -14,6 +14,8 @@
+ #include <memory>
+ #include <mutex>
+ 
++#include "platform/switch2/DiagLog.h"
++
+ CDVDOverlayContainer::~CDVDOverlayContainer()
+ {
+   Clear();
+@@ -44,6 +46,8 @@ void CDVDOverlayContainer::ProcessAndAddOverlayIfValid(const std::shared_ptr<CDV
+   }
+ 
+   m_overlays.emplace_back(pOverlay);
++  SWITCH2_DIAG_LOG("SUBC add start=%lld stop=%lld size=%zu", static_cast<long long>(pOverlay->iPTSStartTime / 1000),
++                   static_cast<long long>(pOverlay->iPTSStopTime / 1000), m_overlays.size());
+ }
+ 
+ VecOverlays* CDVDOverlayContainer::GetOverlays()
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.cpp b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
+index 5a42065..5a1a137 100644
+--- a/xbmc/cores/VideoPlayer/VideoPlayer.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
+@@ -68,6 +68,8 @@
+ #include <mutex>
+ #include <utility>
+ 
++#include "platform/switch2/DiagLog.h"
++
+ using namespace std::chrono_literals;
+ 
+ //------------------------------------------------------------------------------
+@@ -3383,6 +3385,9 @@ void CVideoPlayer::SetEnableStream(CCurrentStream& current, bool isEnabled)
+ 
+ void CVideoPlayer::SetSubtitleVisibleInternal(bool bVisible)
+ {
++  SWITCH2_DIAG_LOG("SUBP visible=%d setting_on=%d stalled=%d", bVisible ? 1 : 0,
++                   m_processInfo->GetVideoSettings().m_SubtitleOn ? 1 : 0,
++                   m_VideoPlayerSubtitle && m_VideoPlayerSubtitle->IsStalled() ? 1 : 0);
+   m_VideoPlayerVideo->EnableSubtitle(bVisible);
+ 
+   if (m_pInputStream && m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD))
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerSubtitle.cpp b/xbmc/cores/VideoPlayer/VideoPlayerSubtitle.cpp
+index 982e95a..b44dcbd 100644
+--- a/xbmc/cores/VideoPlayer/VideoPlayerSubtitle.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerSubtitle.cpp
+@@ -19,6 +19,8 @@
+ 
+ #include <mutex>
+ 
++#include "platform/switch2/DiagLog.h"
++
+ CVideoPlayerSubtitle::CVideoPlayerSubtitle(CDVDOverlayContainer* pOverlayContainer, CProcessInfo &processInfo)
+ : IDVDStreamPlayer(processInfo)
+ {
+@@ -49,6 +51,10 @@ void CVideoPlayerSubtitle::SendMessage(std::shared_ptr<CDVDMsg> pMsg, int priori
+     if (m_pOverlayCodec)
+     {
+       OverlayMessage result = m_pOverlayCodec->Decode(pPacket);
++      SWITCH2_DIAG_LOG("SUBP decode result=%d pkt_pts=%lld size=%d codec=%s",
++                       static_cast<int>(result),
++                       pPacket ? static_cast<long long>(pPacket->pts / 1000) : -1LL,
++                       pPacket ? pPacket->iSize : -1, m_pOverlayCodec->GetName().c_str());
+ 
+       if (result == OverlayMessage::OC_OVERLAY)
+       {
+@@ -56,6 +62,15 @@ void CVideoPlayerSubtitle::SendMessage(std::shared_ptr<CDVDMsg> pMsg, int priori
+ 
+         while ((overlay = m_pOverlayCodec->GetOverlay()))
+         {
++          SWITCH2_DIAG_LOG("SUBP overlay type=%d start=%lld stop=%lld forced=%d",
++                           static_cast<int>(overlay->IsOverlayType(DVDOVERLAY_TYPE_SSA)
++                                                ? DVDOVERLAY_TYPE_SSA
++                                                : (overlay->IsOverlayType(DVDOVERLAY_TYPE_TEXT)
++                                                       ? DVDOVERLAY_TYPE_TEXT
++                                                       : DVDOVERLAY_TYPE_NONE)),
++                           static_cast<long long>(overlay->iPTSStartTime / 1000),
++                           static_cast<long long>(overlay->iPTSStopTime / 1000),
++                           overlay->bForced ? 1 : 0);
+           m_pOverlayContainer->ProcessAndAddOverlayIfValid(overlay);
+         }
+       }
+@@ -197,6 +212,10 @@ void CVideoPlayerSubtitle::Process(double pts, double offset)
+       if(pOverlay->iPTSStopTime != 0.0)
+         pOverlay->iPTSStopTime -= offset;
+ 
++      SWITCH2_DIAG_LOG("SUBP file-overlay pts=%lld start=%lld stop=%lld",
++                       static_cast<long long>(pts / 1000),
++                       static_cast<long long>(pOverlay->iPTSStartTime / 1000),
++                       static_cast<long long>(pOverlay->iPTSStopTime / 1000));
+       m_pOverlayContainer->ProcessAndAddOverlayIfValid(pOverlay);
+       pOverlay = m_pSubtitleFileParser->Parse(pts);
+     }
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+index c42f8f3..8493d40 100644
+--- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+@@ -29,6 +29,8 @@
+ #include <numeric>
+ #include <sstream>
+ 
++#include "platform/switch2/DiagLog.h"
++
+ using namespace std::chrono_literals;
+ 
+ class CDVDMsgVideoCodecChange : public CDVDMsg
+@@ -813,6 +815,17 @@ void CVideoPlayerVideo::ProcessOverlays(const VideoPicture* pSource, double pts)
+ 
+     VecOverlays* pVecOverlays = m_pOverlayContainer->GetOverlays();
+     auto it = pVecOverlays->begin();
++    SWITCH2_DIAG_LOG("SUBV process pts=%lld delay=%lld container=%zu renderSubs=%d sync=%d",
++                     static_cast<long long>(pts / 1000), static_cast<long long>(m_iSubtitleDelay / 1000),
++                     pVecOverlays->size(), m_bRenderSubs ? 1 : 0, static_cast<int>(m_syncState));
++#if defined(TARGET_SWITCH2) && SWITCH2_DIAG
++    if (!pVecOverlays->empty())
++      SWITCH2_DIAG_LOG("SUBV first start=%lld stop=%lld forced=%d pts2=%lld",
++                       static_cast<long long>((*pVecOverlays)[0]->iPTSStartTime / 1000),
++                       static_cast<long long>((*pVecOverlays)[0]->iPTSStopTime / 1000),
++                       (*pVecOverlays)[0]->bForced ? 1 : 0,
++                       static_cast<long long>((pts - m_iSubtitleDelay) / 1000));
++#endif
+ 
+     //Check all overlays and render those that should be rendered, based on time and forced
+     //Both forced and subs should check timing
+@@ -835,6 +848,10 @@ void CVideoPlayerVideo::ProcessOverlays(const VideoPicture* pSource, double pts)
+       }
+     }
+ 
++#if defined(TARGET_SWITCH2) && SWITCH2_DIAG
++    if (!overlays.empty())
++      SWITCH2_DIAG_LOG("SUBV selected=%zu pts=%lld", overlays.size(), static_cast<long long>(pts / 1000));
++#endif
+     for(it = overlays.begin(); it != overlays.end(); ++it)
+     {
+       double pts2 = (*it)->bForced ? pts : pts - m_iSubtitleDelay;
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.h b/xbmc/cores/VideoPlayer/VideoPlayerVideo.h
+index d0c8317..866c4a4 100644
+--- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.h
++++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.h
+@@ -21,6 +21,8 @@
+ 
+ #include <atomic>
+ 
++#include "platform/switch2/DiagLog.h"
++
+ #define DROP_DROPPED 1
+ #define DROP_VERYLATE 2
+ #define DROP_BUFFER_LEVEL 4
+@@ -61,7 +63,11 @@ public:
+   void SendMessage(std::shared_ptr<CDVDMsg> pMsg, int priority = 0) override;
+   void FlushMessages() override;
+ 
+-  void EnableSubtitle(bool bEnable) override { m_bRenderSubs = bEnable; }
++  void EnableSubtitle(bool bEnable) override
++  {
++    SWITCH2_DIAG_LOG("SUBV enable=%d", bEnable ? 1 : 0);
++    m_bRenderSubs = bEnable;
++  }
+   bool IsSubtitleEnabled() override { return m_bRenderSubs; }
+   double GetSubtitleDelay() override { return m_iSubtitleDelay; }
+   void SetSubtitleDelay(double delay) override { m_iSubtitleDelay = delay; }
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt b/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt
 index bc36788..cb56863 100644
 --- a/xbmc/cores/VideoPlayer/VideoRenderers/CMakeLists.txt
@@ -620,6 +942,443 @@ index bc36788..cb56863 100644
                              "ios" IN_LIST CORE_PLATFORM_NAME_LC OR
                              "tvos" IN_LIST CORE_PLATFORM_NAME_LC OR
                              "gbm" IN_LIST CORE_PLATFORM_NAME_LC OR
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.cpp
+index c83e2f0..0d00893 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.cpp
+@@ -34,6 +34,39 @@
+ using namespace Shaders;
+ using namespace Shaders::GLES;
+ 
++namespace
++{
++// 16-bit normalised single-channel textures for YUV420P9..16; GL_RED and the texture swizzle that
++// goes with them are GLES 3 core (GL_EXT_texture_norm16 itself requires GLES 3.1).
++bool SupportsNorm16Textures(const CRenderSystemGLES* renderSystem)
++{
++#if HAS_GLES >= 3 && defined(GL_R16_EXT)
++  return renderSystem && renderSystem->IsExtSupported("GL_EXT_texture_norm16");
++#else
++  return false;
++#endif
++}
++
++int GetTextureBits(AVPixelFormat format)
++{
++  switch (format)
++  {
++    case AV_PIX_FMT_YUV420P16:
++      return 16;
++    case AV_PIX_FMT_YUV420P14:
++      return 14;
++    case AV_PIX_FMT_YUV420P12:
++      return 12;
++    case AV_PIX_FMT_YUV420P10:
++      return 10;
++    case AV_PIX_FMT_YUV420P9:
++      return 9;
++    default:
++      return 8;
++  }
++}
++} // namespace
++
+ CLinuxRendererGLES::CLinuxRendererGLES()
+ {
+   m_format = AV_PIX_FMT_NONE;
+@@ -48,6 +81,8 @@ CLinuxRendererGLES::CLinuxRendererGLES()
+     m_pixelStoreKey = GL_UNPACK_ROW_LENGTH_EXT;
+   }
+ #endif
++
++  m_hasNorm16 = SupportsNorm16Textures(m_renderSystem);
+ }
+ 
+ CLinuxRendererGLES::~CLinuxRendererGLES()
+@@ -71,6 +106,19 @@ bool CLinuxRendererGLES::Register()
+   return true;
+ }
+ 
++std::vector<AVPixelFormat> CLinuxRendererGLES::GetSupportedFormats()
++{
++  std::vector<AVPixelFormat> formats{AV_PIX_FMT_YUV420P};
++
++  if (SupportsNorm16Textures(dynamic_cast<CRenderSystemGLES*>(CServiceBroker::GetRenderSystem())))
++  {
++    formats.insert(formats.end(), {AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV420P12,
++                                   AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV420P16});
++  }
++
++  return formats;
++}
++
+ bool CLinuxRendererGLES::ValidateRenderTarget()
+ {
+   if (!m_bValidated)
+@@ -277,6 +325,7 @@ void CLinuxRendererGLES::LoadPlane(CYuvPlane& plane, int type,
+ {
+   const GLvoid *pixelData = data;
+   int bps = bpp * KODI::UTILS::GL::glFormatElementByteCount(type);
++  const GLenum dataType = (bpp == 2) ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE;
+ 
+   glBindTexture(m_textureTarget, plane.id);
+ 
+@@ -286,7 +335,8 @@ void CLinuxRendererGLES::LoadPlane(CYuvPlane& plane, int type,
+     if (m_pixelStoreKey > 0)
+     {
+       pixelStoreChanged = true;
+-      glPixelStorei(m_pixelStoreKey, stride);
++      // the row length is counted in pixels, not bytes
++      glPixelStorei(m_pixelStoreKey, stride / bps);
+     }
+     else
+     {
+@@ -306,7 +356,7 @@ void CLinuxRendererGLES::LoadPlane(CYuvPlane& plane, int type,
+       pixelData = m_planeBuffer;
+     }
+   }
+-  glTexSubImage2D(m_textureTarget, 0, 0, 0, width, height, type, GL_UNSIGNED_BYTE, pixelData);
++  glTexSubImage2D(m_textureTarget, 0, 0, 0, width, height, type, dataType, pixelData);
+ 
+   if (m_pixelStoreKey > 0 && pixelStoreChanged)
+     glPixelStorei(m_pixelStoreKey, 0);
+@@ -316,7 +366,7 @@ void CLinuxRendererGLES::LoadPlane(CYuvPlane& plane, int type,
+   {
+     glTexSubImage2D(m_textureTarget, 0,
+                     0, height, width, 1,
+-                    type, GL_UNSIGNED_BYTE,
++                    type, dataType,
+                     static_cast<const unsigned char*>(pixelData) + stride * (height - 1));
+   }
+ 
+@@ -324,7 +374,7 @@ void CLinuxRendererGLES::LoadPlane(CYuvPlane& plane, int type,
+   {
+     glTexSubImage2D(m_textureTarget, 0,
+                     width, 0, 1, height,
+-                    type, GL_UNSIGNED_BYTE,
++                    type, dataType,
+                     static_cast<const unsigned char*>(pixelData) + bps * (width - 1));
+   }
+ 
+@@ -1266,18 +1316,25 @@ bool CLinuxRendererGLES::UploadYV12Texture(int source)
+ 
+   glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+ 
++  GLenum lumaFormat = GL_LUMINANCE;
++  GLenum vFormat = GL_ALPHA;
++#if HAS_GLES >= 3
++  if (im->bpp == 2)
++    lumaFormat = vFormat = GL_RED;
++#endif
++
+   // load Y plane
+-  LoadPlane(buf.fields[FIELD_FULL][0], GL_LUMINANCE,
++  LoadPlane(buf.fields[FIELD_FULL][0], lumaFormat,
+             im->width, im->height,
+             im->stride[0], im->bpp, im->plane[0]);
+ 
+   // load U plane
+-  LoadPlane(buf.fields[FIELD_FULL][1], GL_LUMINANCE,
++  LoadPlane(buf.fields[FIELD_FULL][1], lumaFormat,
+             im->width >> im->cshift_x, im->height >> im->cshift_y,
+             im->stride[1], im->bpp, im->plane[1]);
+ 
+   // load V plane
+-  LoadPlane(buf.fields[FIELD_FULL][2], GL_ALPHA,
++  LoadPlane(buf.fields[FIELD_FULL][2], vFormat,
+             im->width >> im->cshift_x, im->height >> im->cshift_y,
+             im->stride[2], im->bpp, im->plane[2]);
+ 
+@@ -1324,6 +1381,7 @@ bool CLinuxRendererGLES::CreateYV12Texture(int index)
+ {
+   // since we also want the field textures, pitch must be texture aligned
+   unsigned p;
++  CPictureBuffer& buf = m_buffers[index];
+   YuvImage &im = m_buffers[index].image;
+ 
+   DeleteYV12Texture(index);
+@@ -1332,7 +1390,10 @@ bool CLinuxRendererGLES::CreateYV12Texture(int index)
+   im.width = m_sourceWidth;
+   im.cshift_x = 1;
+   im.cshift_y = 1;
+-  im.bpp = 1;
++
++  // high bit depth formats are only offered to the decoder (GetSupportedFormats) with norm16
++  buf.m_srcTextureBits = m_hasNorm16 ? GetTextureBits(m_format) : 8;
++  im.bpp = (buf.m_srcTextureBits > 8) ? 2 : 1;
+ 
+   im.stride[0] = im.bpp * im.width;
+   im.stride[1] = im.bpp * (im.width >> im.cshift_x);
+@@ -1389,17 +1450,31 @@ bool CLinuxRendererGLES::CreateYV12Texture(int index)
+ 
+       glBindTexture(m_textureTarget, plane.id);
+ 
+-      GLint format;
+-      if (p == 2) // V plane needs an alpha texture
++#if HAS_GLES >= 3 && defined(GL_R16_EXT)
++      if (im.bpp == 2)
+       {
+-        format = GL_ALPHA;
++        glTexImage2D(m_textureTarget, 0, GL_R16_EXT, plane.texwidth, plane.texheight, 0, GL_RED,
++                     GL_UNSIGNED_SHORT, nullptr);
++        // the YUV shaders read U from .g and V from .a, as they do for luminance/alpha planes
++        glTexParameteri(m_textureTarget, GL_TEXTURE_SWIZZLE_G, GL_RED);
++        glTexParameteri(m_textureTarget, GL_TEXTURE_SWIZZLE_A, GL_RED);
+       }
+       else
++#endif
+       {
+-        format = GL_LUMINANCE;
+-      }
++        GLint format;
++        if (p == 2) // V plane needs an alpha texture
++        {
++          format = GL_ALPHA;
++        }
++        else
++        {
++          format = GL_LUMINANCE;
++        }
+ 
+-      glTexImage2D(m_textureTarget, 0, format, plane.texwidth, plane.texheight, 0, format, GL_UNSIGNED_BYTE, nullptr);
++        glTexImage2D(m_textureTarget, 0, format, plane.texwidth, plane.texheight, 0, format,
++                     GL_UNSIGNED_BYTE, nullptr);
++      }
+       glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+       glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+       glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.h b/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.h
+index 9a936a8..ddac55c 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.h
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.h
+@@ -64,6 +64,14 @@ public:
+   static CBaseRenderer* Create(CVideoBuffer *buffer);
+   static bool Register();
+ 
++  /*!
++   * \brief Software decoder output formats this renderer can upload directly.
++   *
++   * YUV420P9..16 are uploaded as 16-bit normalised single-channel textures, which GLES only has
++   * with GL_EXT_texture_norm16. Without it the decoder converts them to YUV420P.
++   */
++  static std::vector<AVPixelFormat> GetSupportedFormats();
++
+   // Player functions
+   bool Configure(const VideoPicture& picture, float fps, unsigned int orientation) override;
+   bool IsConfigured() override { return m_bConfigured; }
+@@ -150,6 +158,7 @@ protected:
+   int m_reloadShaders{0};
+   CRenderSystemGLES *m_renderSystem{nullptr};
+   GLenum m_pixelStoreKey{0};
++  bool m_hasNorm16{false};
+ 
+   struct CYuvPlane
+   {
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRenderer.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRenderer.cpp
+index dfd4b31..f50009d 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRenderer.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRenderer.cpp
+@@ -26,6 +26,17 @@
+ #include <mutex>
+ #include <utility>
+ 
++#if defined(TARGET_SWITCH2)
++// Subtitle diagnostics (SWITCH2_DIAG builds only; no-ops otherwise).
++#include "platform/switch2/PosixCompat.h"
++#endif
++#ifndef SWITCH2_DIAG_LOG
++#define SWITCH2_DIAG_LOG(...) \
++  do \
++  { \
++  } while (0)
++#endif
++
+ using namespace KODI;
+ using namespace OVERLAY;
+ 
+@@ -63,6 +74,8 @@ void CRenderer::AddOverlay(std::shared_ptr<CDVDOverlay> o, double pts, int index
+   e.pts = pts;
+   e.overlay_dvd = std::move(o);
+   m_buffers[index].push_back(e);
++  SWITCH2_DIAG_LOG("SUBO add index=%d pts=%lld buffer=%zu", index, static_cast<long long>(pts / 1000),
++                   m_buffers[index].size());
+ }
+ 
+ void CRenderer::Release(std::vector<SElement>& list)
+@@ -143,6 +156,12 @@ void CRenderer::Render(int idx)
+   std::unique_lock<CCriticalSection> lock(m_section);
+ 
+   std::vector<SElement>& list = m_buffers[idx];
++#if defined(TARGET_SWITCH2) && SWITCH2_DIAG
++  if (!list.empty())
++    SWITCH2_DIAG_LOG("SUBO render idx=%d elements=%zu first_dvd=%d first_pts=%lld", idx,
++                     list.size(), list[0].overlay_dvd ? 1 : 0,
++                     static_cast<long long>(list[0].pts / 1000));
++#endif
+   for(std::vector<SElement>::iterator it = list.begin(); it != list.end(); ++it)
+   {
+     if (it->overlay_dvd)
+@@ -243,6 +262,17 @@ void CRenderer::Render(COverlay* o)
+ 
+   state.x += GetStereoscopicDepth();
+ 
++  SWITCH2_DIAG_LOG("SUB render pos=%d align=%d state=%.1f,%.1f %.1fx%.1f rv=%.0f,%.0f-%.0f,%.0f "
++                   "rd=%.0f,%.0f-%.0f,%.0f rs=%.0fx%.0f iSubtitles=%d",
++                   static_cast<int>(o->m_pos), static_cast<int>(o->m_align),
++                   static_cast<double>(state.x), static_cast<double>(state.y),
++                   static_cast<double>(state.width), static_cast<double>(state.height),
++                   static_cast<double>(m_rv.x1), static_cast<double>(m_rv.y1),
++                   static_cast<double>(m_rv.x2), static_cast<double>(m_rv.y2),
++                   static_cast<double>(m_rd.x1), static_cast<double>(m_rd.y1),
++                   static_cast<double>(m_rd.x2), static_cast<double>(m_rd.y2),
++                   static_cast<double>(m_rs.Width()), static_cast<double>(m_rs.Height()),
++                   CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo().iSubtitles);
+   o->Render(state);
+ }
+ 
+@@ -514,7 +544,24 @@ std::shared_ptr<COverlay> CRenderer::ConvertLibass(
+ 
+   // If no images not execute the renderer
+   if (!images)
++  {
++    SWITCH2_DIAG_LOG("SUB conv null pts=%lld changes=%d", static_cast<long long>(pts / 1000), changes);
+     return nullptr;
++  }
++#if defined(TARGET_SWITCH2) && SWITCH2_DIAG
++  {
++    int count = 0;
++    for (const ASS_Image* img = images; img; img = img->next)
++      ++count;
++    SWITCH2_DIAG_LOG("SUB conv pts=%lld frame=%.0fx%.0f video=%.0fx%.0f src=%.0fx%.0f imgs=%d "
++                     "first=%dx%d@%d,%d color=%08x changes=%d",
++                     static_cast<long long>(pts / 1000), static_cast<double>(rOpts.frameWidth),
++                     static_cast<double>(rOpts.frameHeight), static_cast<double>(rOpts.videoWidth),
++                     static_cast<double>(rOpts.videoHeight), static_cast<double>(rOpts.sourceWidth),
++                     static_cast<double>(rOpts.sourceHeight), count, images->w, images->h,
++                     images->dst_x, images->dst_y, images->color, changes);
++  }
++#endif
+ 
+   if (o.m_textureid)
+   {
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRendererGLES.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRendererGLES.cpp
+index cf3b313..4d0f59f 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRendererGLES.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/OverlayRendererGLES.cpp
+@@ -26,6 +26,17 @@
+ 
+ #include <cmath>
+ 
++#if defined(TARGET_SWITCH2)
++// Subtitle diagnostics (SWITCH2_DIAG builds only; no-ops otherwise).
++#include "platform/switch2/PosixCompat.h"
++#endif
++#ifndef SWITCH2_DIAG_LOG
++#define SWITCH2_DIAG_LOG(...) \
++  do \
++  { \
++  } while (0)
++#endif
++
+ // GLES2.0 cant do CLAMP, but can do CLAMP_TO_EDGE.
+ #define GL_CLAMP GL_CLAMP_TO_EDGE
+ 
+@@ -259,13 +270,19 @@ COverlayGlyphGLES::COverlayGlyphGLES(ASS_Image* images, float width, float heigh
+ 
+   SQuads quads;
+   if (!convert_quad(images, quads, static_cast<int>(width)))
++  {
++    SWITCH2_DIAG_LOG("SUB glyph ok=0 width=%.0f", static_cast<double>(width));
+     return;
++  }
+ 
+   glGenTextures(1, &m_texture);
+   glBindTexture(GL_TEXTURE_2D, m_texture);
+ 
+   LoadTexture(GL_TEXTURE_2D, quads.size_x, quads.size_y, quads.size_x, &m_u, &m_v, true,
+               quads.texture.data());
++  SWITCH2_DIAG_LOG("SUB glyph ok=1 quads=%zu atlas=%dx%d tex=%u u=%.3f v=%.3f err=0x%x",
++                   quads.quad.size(), quads.size_x, quads.size_y, m_texture,
++                   static_cast<double>(m_u), static_cast<double>(m_v), glGetError());
+ 
+   float scale_u = m_u / quads.size_x;
+   float scale_v = m_v / quads.size_y;
+@@ -328,6 +345,11 @@ COverlayGlyphGLES::~COverlayGlyphGLES()
+ 
+ void COverlayGlyphGLES::Render(SRenderState& state)
+ {
++  SWITCH2_DIAG_LOG("SUB draw-start tex=%u verts=%zu pos=%.1f,%.1f size=%.1fx%.1f scissor=%d err=0x%x",
++                   m_texture, m_vertex.size(), static_cast<double>(state.x),
++                   static_cast<double>(state.y), static_cast<double>(state.width),
++                   static_cast<double>(state.height), glIsEnabled(GL_SCISSOR_TEST) ? 1 : 0,
++                   glGetError());
+   if ((m_texture == 0) || (m_vertex.size() == 0))
+     return;
+ 
+@@ -382,6 +404,14 @@ void COverlayGlyphGLES::Render(SRenderState& state)
+   glEnableVertexAttribArray(tex0Loc);
+ 
+   glDrawArrays(GL_TRIANGLES, 0, vecVertices.size());
++  SWITCH2_DIAG_LOG("SUB draw tex=%u verts=%zu pos=%.1f,%.1f size=%.1fx%.1f scissor=%d "
++                   "loc=%d,%d,%d v0=%.4f,%.4f a=%u err=0x%x",
++                   m_texture, vecVertices.size(), static_cast<double>(state.x),
++                   static_cast<double>(state.y), static_cast<double>(state.width),
++                   static_cast<double>(state.height), glIsEnabled(GL_SCISSOR_TEST) ? 1 : 0,
++                   posLoc, colLoc, tex0Loc, static_cast<double>(vecVertices[0].x),
++                   static_cast<double>(vecVertices[0].y), static_cast<unsigned>(vecVertices[0].a),
++                   glGetError());
+ 
+   glDisableVertexAttribArray(posLoc);
+   glDisableVertexAttribArray(colLoc);
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+index 51bbbc5..bc1dcf4 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+@@ -30,6 +30,8 @@
+ #include <memory>
+ #include <mutex>
+ 
++#include "platform/switch2/DiagLog.h"
++
+ using namespace std::chrono_literals;
+ 
+ void CRenderManager::CClockSync::Reset()
+@@ -689,6 +691,9 @@ RESOLUTION CRenderManager::GetResolution()
+ void CRenderManager::Render(bool clear, DWORD flags, DWORD alpha, bool gui)
+ {
+   CSingleExit exitLock(CServiceBroker::GetWinSystem()->GetGfxContext());
++  SWITCH2_DIAG_LOG("SUBR render-entry gui=%d state=%d guilayer=%d", gui ? 1 : 0,
++                   static_cast<int>(m_renderState),
++                   m_pRenderer ? (m_pRenderer->IsGuiLayer() ? 1 : 0) : -1);
+ 
+   {
+     std::unique_lock<CCriticalSection> lock(m_statelock);
+@@ -720,6 +725,11 @@ void CRenderManager::Render(bool clear, DWORD flags, DWORD alpha, bool gui)
+     CRect src, dst, view;
+     m_pRenderer->GetVideoRect(src, dst, view);
+     m_overlays.SetVideoRect(src, dst, view);
++#if defined(TARGET_SWITCH2) && SWITCH2_DIAG
++    if (m_renderedOverlay)
++      SWITCH2_DIAG_LOG("SUBR render gui=1 guilayer=%d presentsource=%d hasOverlay=1",
++                       m_pRenderer->IsGuiLayer() ? 1 : 0, m_presentsource);
++#endif
+     m_overlays.Render(m_presentsource);
+ 
+     if (m_renderDebug)
+@@ -1041,9 +1051,13 @@ void CRenderManager::AddOverlay(std::shared_ptr<CDVDOverlay> o, double pts)
+   {
+     std::unique_lock<CCriticalSection> lock(m_presentlock);
+     if (m_free.empty())
++    {
++      SWITCH2_DIAG_LOG("SUBR addoverlay no-free pts=%lld", static_cast<long long>(pts / 1000));
+       return;
++    }
+     idx = m_free.front();
+   }
++  SWITCH2_DIAG_LOG("SUBR addoverlay idx=%d pts=%lld", idx, static_cast<long long>(pts / 1000));
+   std::unique_lock<CCriticalSection> lock(m_datalock);
+   m_overlays.AddOverlay(std::move(o), pts, idx);
+ }
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt b/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt
 index 5bb0219..76c678a 100644
 --- a/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/CMakeLists.txt
@@ -632,6 +1391,20 @@ index 5bb0219..76c678a 100644
                              "ios" IN_LIST CORE_PLATFORM_NAME_LC OR
                              "tvos" IN_LIST CORE_PLATFORM_NAME_LC OR
                              "gbm" IN_LIST CORE_PLATFORM_NAME_LC OR
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/YUV2RGBShaderGLES.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/YUV2RGBShaderGLES.cpp
+index 63e4d30..7b50f33 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/YUV2RGBShaderGLES.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/VideoShaders/YUV2RGBShaderGLES.cpp
+@@ -40,7 +40,8 @@ BaseYUV2RGBGLSLShader::BaseYUV2RGBGLSLShader(EShaderFormat format,
+ 
+   m_convertFullRange = false;
+ 
+-  if (m_format == SHADER_YV12)
++  if (m_format == SHADER_YV12 || m_format == SHADER_YV12_9 || m_format == SHADER_YV12_10 ||
++      m_format == SHADER_YV12_12 || m_format == SHADER_YV12_14 || m_format == SHADER_YV12_16)
+     m_defines += "#define XBMC_YV12\n";
+   else if (m_format == SHADER_NV12)
+     m_defines += "#define XBMC_NV12\n";
 diff --git a/xbmc/dbwrappers/sqlitedataset.cpp b/xbmc/dbwrappers/sqlitedataset.cpp
 index 2542868..501a41d 100644
 --- a/xbmc/dbwrappers/sqlitedataset.cpp
@@ -978,6 +1751,37 @@ index 6d74f46..271b239 100644
    if (fseeko(m_file, static_cast<off_t>(frame.GetOffset()), SEEK_SET) == -1)
  #elif defined(TARGET_ANDROID)
    if (fseek(m_file, static_cast<long>(frame.GetOffset()), SEEK_SET) == -1)  // No fseeko64 before N
+diff --git a/xbmc/interfaces/python/XBPython.cpp b/xbmc/interfaces/python/XBPython.cpp
+index 5fdd176..cf7cfdd 100644
+--- a/xbmc/interfaces/python/XBPython.cpp
++++ b/xbmc/interfaces/python/XBPython.cpp
+@@ -493,7 +493,25 @@ bool XBPython::OnScriptInitialized(ILanguageInvoker* invoker)
+     // Info about interesting python envvars available
+     // at http://docs.python.org/using/cmdline.html#environment-variables
+ 
+-#if !defined(TARGET_WINDOWS) && !defined(TARGET_ANDROID)
++#if defined(TARGET_SWITCH2)
++    // Switch 2: CPython 3.11 is linked in statically (every extension module built in, no dlopen);
++    // its pure-Python stdlib is shipped as special://xbmc/system/python/lib/python3.11 (with
++    // unchecked-hash .pyc, compiled at optimisation level 0: PYTHONOPTIMIZE stays unset).
++    // PYTHONHOME makes getpath skip its executable/landmark search: /proc/self/exe does not exist.
++    {
++      const std::string pythonHome = CSpecialProtocol::TranslatePath("special://xbmc/system/python");
++      setenv("PYTHONHOME", pythonHome.c_str(), 1);
++      setenv("PYTHONPATH", "", 1);
++      // There is no system CA store on the console: ssl.create_default_context() (urllib, http.client)
++      // falls back to SSL_CERT_FILE. Add-ons using requests take certifi's bundle instead.
++      const std::string caFile =
++          CSpecialProtocol::TranslatePath("special://xbmc/system/certs/cacert.pem");
++      if (!getenv("SSL_CERT_FILE"))
++        setenv("SSL_CERT_FILE", caFile.c_str(), 1);
++      CLog::Log(LOGINFO, "Python: PYTHONHOME -> {}, SSL_CERT_FILE -> {}", pythonHome,
++                getenv("SSL_CERT_FILE"));
++    }
++#elif !defined(TARGET_WINDOWS) && !defined(TARGET_ANDROID)
+     // check if we are running as real xbmc.app or just binary
+     if (!CUtil::GetFrameworksPath(true).empty())
+     {
 diff --git a/xbmc/network/DNSNameCache.cpp b/xbmc/network/DNSNameCache.cpp
 index 148c930..13df4f8 100644
 --- a/xbmc/network/DNSNameCache.cpp
@@ -1108,27 +1912,35 @@ index 19a940e..0e6940c 100644
      return recursiveAttr;
 diff --git a/xbmc/platform/switch2/CMakeLists.txt b/xbmc/platform/switch2/CMakeLists.txt
 new file mode 100644
-index 0000000..cf1c07a
+index 0000000..6f9403c
 --- /dev/null
 +++ b/xbmc/platform/switch2/CMakeLists.txt
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,19 @@
 +set(SOURCES PlatformSwitch2.cpp
 +            CrashHandler.cpp
 +            DlStubs.cpp
++            OsslTrace.cpp
 +            PosixCompat.cpp
 +            StartupProbe.cpp
++            StaticAddons.cpp
 +            SystemInfoSwitch2.cpp)
 +set(HEADERS PlatformSwitch2.h
 +            PosixCompat.h
++            StaticAddons.h
 +            dlfcn.h)
++
++if(ENABLE_STATIC_ISA)
++  set_source_files_properties(StaticAddons.cpp PROPERTIES
++                              COMPILE_DEFINITIONS KODI_STATIC_ADDON_INPUTSTREAM_ADAPTIVE)
++endif()
 +
 +core_add_library(platform_switch2)
 diff --git a/xbmc/platform/switch2/CrashHandler.cpp b/xbmc/platform/switch2/CrashHandler.cpp
 new file mode 100644
-index 0000000..cd8a189
+index 0000000..d12f16f
 --- /dev/null
 +++ b/xbmc/platform/switch2/CrashHandler.cpp
-@@ -0,0 +1,457 @@
+@@ -0,0 +1,818 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -1146,6 +1958,19 @@ index 0000000..cd8a189
 +//    whose image starts at 0), a frame-pointer backtrace and the code addresses found on the stack.
 +//  * C++: std::terminate (uncaught exception, noexcept violation, pure virtual call) and abort():
 +//    exception type, what(), backtrace.
++//  * Process-ending paths that never raise a CPU exception (rev 16): svcBreak (libounce's mutexLock /
++//    mutexUnlock on a failed svcArbitrate*, diagAbortWithResult, the exception return path),
++//    diagAbortWithResult, newlib __assert_func and CPython's _Py_FatalErrorFunc/_Py_FatalErrorFormat
++//    (all -Wl,--wrap, Install.cmake): one "FATAL ..." line to boot.txt and crash.txt plus a backtrace
++//    in crash.txt, then the real function.
++// crash.txt is opened once at start-up and kept open, so a crash write is one fsFileWrite on that
++// handle (no create/open/size/close by path in the handler); boot.txt is appended by path.
++//  * rev 18: our own STRONG __libnx_exception_entry (the CPU-exception entry _start branches to). The
++//    weak libounce one aborted (0xf801) whenever svcGetInfo(DebuggerAttached) returned non-zero and
++//    never reached __libnx_exception_handler under hbloader (finding 1509). Ours saves x9-x30 and the
++//    entry sp, moves to its own stack, writes "EXC-ENTRY" plus a hex dump of the kernel's exception
++//    frame to crash.txt with one fsFileWrite (no lock), logs the full dump (LogNativeException) and
++//    ends the process with svcBreak (system error panel, as before). No svcReturnFromException.
 +
 +#include "PosixCompat.h"
 +
@@ -1153,6 +1978,8 @@ index 0000000..cd8a189
 +#include <cstdint>
 +#include <cstdlib>
 +#include <cstring>
++#include <cstdarg>
++#include <cstdio>
 +#include <cxxabi.h>
 +#include <exception>
 +#include <typeinfo>
@@ -1170,6 +1997,19 @@ index 0000000..cd8a189
 +void __libnx_exception_handler(ThreadExceptionDump* ctx);
 +void __real_abort(void) __attribute__((noreturn));
 +void __wrap_abort(void) __attribute__((noreturn));
++Result __real_svcBreak(u32 breakReason, uintptr_t inval1, uintptr_t inval2);
++Result __wrap_svcBreak(u32 breakReason, uintptr_t inval1, uintptr_t inval2);
++void __real_diagAbortWithResult(Result res) __attribute__((noreturn));
++void __wrap_diagAbortWithResult(Result res) __attribute__((noreturn));
++void __real___assert_func(const char* file, int line, const char* func, const char* expr)
++    __attribute__((noreturn));
++void __wrap___assert_func(const char* file, int line, const char* func, const char* expr)
++    __attribute__((noreturn));
++// CPython 3.11 (Python/pylifecycle.c); both end in abort().
++void __real__Py_FatalErrorFunc(const char* func, const char* msg) __attribute__((noreturn));
++void __wrap__Py_FatalErrorFunc(const char* func, const char* msg) __attribute__((noreturn));
++void __wrap__Py_FatalErrorFormat(const char* func, const char* format, ...)
++    __attribute__((noreturn));
 +}
 +
 +namespace
@@ -1185,8 +2025,18 @@ index 0000000..cd8a189
 +std::atomic<u64> g_exceptionTid{0}; // thread handling the native exception, 0 = none
 +std::atomic<int> g_inTerminate{0};
 +// Separate buffers: a native fault while a soft crash is being logged must not mix the two.
++char g_excBuf[4 * 1024];
 +char g_softBuf[8 * 1024];
 +char g_nativeBuf[12 * 1024];
++char g_fatalBuf[6 * 1024];
++char g_pyFatalMsg[1024];
++std::atomic<int> g_fatalDepth{0}; // >0 while a FATAL line is being written (recursion guard)
++// crash.txt, opened once by Switch2InstallCrashHandlers and never closed.
++FsFile g_crashFile;
++std::atomic<bool> g_crashOpen{false};
++// Next free offset in crash.txt. Writers reserve their range with fetch_add before fsFileWrite, so
++// two threads (or the exception entry, which takes no lock) never write over each other.
++std::atomic<s64> g_crashOff{0};
 +// The native handler copies the dump here at once and does its work on its own stack, so another
 +// thread entering __libnx_exception_entry (which resets sp to the top of __nx_exception_stack and
 +// rewrites __nx_exceptiondump) cannot corrupt it.
@@ -1337,9 +2187,45 @@ index 0000000..cd8a189
 +  }
 +};
 +
++bool LockAppend()
++{
++  // Serialise writers (a second open of a file open for writing fails on this FS). Bounded wait,
++  // then go ahead anyway: a thread that crashed inside here must not block the crash log forever.
++  for (int i = 0; i < 200; ++i)
++  {
++    int expected = 0;
++    if (g_appendLock.compare_exchange_strong(expected, 1))
++      return true;
++    svcSleepThread(1000000LL);
++  }
++  return false;
++}
++
++void UnlockAppend(bool locked)
++{
++  if (locked)
++    g_appendLock.store(0);
++}
++
++// One write on the pre-opened crash.txt handle; by path (Switch2RawAppend) if that open failed.
++void CrashWrite(const char* buf, size_t len)
++{
++  if (!len)
++    return;
++  if (!g_crashOpen.load())
++  {
++    Switch2RawAppend(CRASH, buf, len);
++    return;
++  }
++  const bool locked = LockAppend();
++  const s64 off = g_crashOff.fetch_add(static_cast<s64>(len));
++  fsFileWrite(&g_crashFile, off, buf, len, FsWriteOption_Flush);
++  UnlockAppend(locked);
++}
++
 +void Flush(Out& o)
 +{
-+  Switch2RawAppend(CRASH, o.buf, o.n);
++  CrashWrite(o.buf, o.n);
 +  o.n = 0;
 +}
 +
@@ -1436,16 +2322,7 @@ index 0000000..cd8a189
 +  FsFileSystem* fs = g_sdmc ? g_sdmc : fsdevGetDeviceFileSystem("sdmc");
 +  if (!fs)
 +    return -1;
-+  // Serialise writers (a second open of a file open for writing fails on this FS). Bounded wait,
-+  // then go ahead anyway: a thread that crashed inside here must not block the crash log forever.
-+  bool locked = false;
-+  for (int i = 0; i < 200 && !locked; ++i)
-+  {
-+    int expected = 0;
-+    locked = g_appendLock.compare_exchange_strong(expected, 1);
-+    if (!locked)
-+      svcSleepThread(1000000LL);
-+  }
++  const bool locked = LockAppend();
 +  fsFsCreateFile(fs, fspath, 0, 0); // fails harmlessly when the file exists
 +  FsFile f;
 +  Result rc = fsFsOpenFile(fs, fspath, FsOpenMode_Write | FsOpenMode_Append, &f);
@@ -1457,8 +2334,7 @@ index 0000000..cd8a189
 +      rc = fsFileWrite(&f, size, buf, len, FsWriteOption_Flush);
 +    fsFileClose(&f);
 +  }
-+  if (locked)
-+    g_appendLock.store(0);
++  UnlockAppend(locked);
 +  return R_SUCCEEDED(rc) ? 0 : -1;
 +}
 +
@@ -1492,12 +2368,151 @@ index 0000000..cd8a189
 +  Switch2RawAppend(BOOT, line, n);
 +}
 +
++extern "C" void Switch2DiagLog(const char* fmt, ...)
++{
++  char line[400];
++  int n = std::snprintf(line, sizeof(line), "%llu ",
++                        static_cast<unsigned long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL));
++  if (n < 0)
++    return;
++  va_list ap;
++  va_start(ap, fmt);
++  const int m = std::vsnprintf(line + n, sizeof(line) - static_cast<size_t>(n) - 1, fmt, ap);
++  va_end(ap);
++  if (m > 0)
++    n += m;
++  if (n > static_cast<int>(sizeof(line)) - 2)
++    n = static_cast<int>(sizeof(line)) - 2;
++  line[n++] = '\n';
++  Switch2RawAppend(BOOT, line, static_cast<unsigned long>(n));
++}
++
 +extern "C" void Switch2InstallCrashHandlers(void)
 +{
 +  g_sdmc = fsdevGetDeviceFileSystem("sdmc");
 +  ResolveModule();
++  if (g_sdmc)
++  {
++    fsFsCreateFile(g_sdmc, CRASH, 0, 0); // fails harmlessly when the file exists
++    s64 size = 0;
++    if (R_SUCCEEDED(fsFsOpenFile(g_sdmc, CRASH, FsOpenMode_Write | FsOpenMode_Append, &g_crashFile)))
++    {
++      if (R_SUCCEEDED(fsFileGetSize(&g_crashFile, &size)))
++      {
++        g_crashOff.store(size);
++        g_crashOpen.store(true);
++      }
++      else
++        fsFileClose(&g_crashFile);
++    }
++  }
 +  std::set_terminate(OnTerminate);
++  if (!g_crashOpen.load())
++    Switch2BootLog("crash-txt-preopen-failed", 0);
 +  Switch2BootLog("crash-handlers-armed base", static_cast<long long>(g_textBase));
++}
++
++namespace
++{
++// "<ms> FATAL <fn> rc=.. lr=..(+offset) [a=.. b=..] [text]" to boot.txt and crash.txt, then a
++// backtrace (fp chain from `fp`) to crash.txt.
++void FatalLog(const char* fn, u64 rc, u64 lr, u64 fp, const char* text, bool args, u64 a, u64 b)
++{
++  if (g_fatalDepth.fetch_add(1) != 0)
++  {
++    g_fatalDepth.fetch_sub(1);
++    return;
++  }
++  ResolveModule();
++  Out o(g_fatalBuf);
++  o.Dec(static_cast<long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL));
++  o.Put(" FATAL ");
++  o.Put(fn);
++  o.Kv("rc", rc);
++  o.Addr("lr", lr);
++  if (args)
++  {
++    o.Kv("a", a);
++    o.Kv("b", b);
++  }
++  u64 tid = 0;
++  svcGetThreadId(&tid, CUR_THREAD_HANDLE);
++  o.Put(" tid=");
++  o.Dec(static_cast<long long>(tid));
++  if (text)
++  {
++    o.Put(" ");
++    o.Put(text);
++  }
++  o.Put("\n");
++  Switch2RawAppend(BOOT, o.buf, o.n);
++  Flush(o);
++  o.Put("=== FATAL ");
++  o.Put(fn);
++  o.Kv("base", g_textBase);
++  o.Put("\n");
++  o.Backtrace(fp);
++  Flush(o);
++  g_fatalDepth.fetch_sub(1);
++}
++} // namespace
++
++// svcBreak: libounce's mutexLock/mutexUnlock call it when svcArbitrateLock/Unlock fails, and
++// diagAbortWithResult and the exception return path end in it. Notification-only breaks return.
++extern "C" Result __wrap_svcBreak(u32 breakReason, uintptr_t inval1, uintptr_t inval2)
++{
++  // rc= is the break reason; a/b the two arguments. diagAbortWithResult passes (&result, 4).
++  char text[40];
++  const char* t = nullptr;
++  if (inval2 == 4 && inval1 && Readable(inval1, 4))
++  {
++    std::snprintf(text, sizeof(text), "result=0x%x", *reinterpret_cast<const u32*>(inval1));
++    t = text;
++  }
++  FatalLog("svcBreak", breakReason, reinterpret_cast<u64>(__builtin_return_address(0)),
++           reinterpret_cast<u64>(__builtin_frame_address(0)), t, true, inval1, inval2);
++  return __real_svcBreak(breakReason, inval1, inval2);
++}
++
++extern "C" void __wrap_diagAbortWithResult(Result res)
++{
++  FatalLog("diagAbortWithResult", res, reinterpret_cast<u64>(__builtin_return_address(0)),
++           reinterpret_cast<u64>(__builtin_frame_address(0)), nullptr, false, 0, 0);
++  __real_diagAbortWithResult(res);
++}
++
++extern "C" void __wrap___assert_func(const char* file, int line, const char* func, const char* expr)
++{
++  char text[512];
++  std::snprintf(text, sizeof(text), "%s:%d %s: %s", file ? file : "?", line, func ? func : "?",
++                expr ? expr : "?");
++  FatalLog("__assert_func", static_cast<u64>(line), reinterpret_cast<u64>(__builtin_return_address(0)),
++           reinterpret_cast<u64>(__builtin_frame_address(0)), text, false, 0, 0);
++  __real___assert_func(file, line, func, expr);
++}
++
++extern "C" void __wrap__Py_FatalErrorFunc(const char* func, const char* msg)
++{
++  char text[600];
++  std::snprintf(text, sizeof(text), "Fatal Python error: %s: %s", func ? func : "?", msg ? msg : "?");
++  FatalLog("_Py_FatalErrorFunc", 0, reinterpret_cast<u64>(__builtin_return_address(0)),
++           reinterpret_cast<u64>(__builtin_frame_address(0)), text, false, 0, 0);
++  __real__Py_FatalErrorFunc(func, msg);
++}
++
++// Formats the message here and hands it to the real _Py_FatalErrorFunc, which prints the same
++// "Fatal Python error: <func>: <message>" text to stderr and aborts.
++extern "C" void __wrap__Py_FatalErrorFormat(const char* func, const char* format, ...)
++{
++  va_list ap;
++  va_start(ap, format);
++  std::vsnprintf(g_pyFatalMsg, sizeof(g_pyFatalMsg), format ? format : "?", ap);
++  va_end(ap);
++  char text[1100];
++  std::snprintf(text, sizeof(text), "Fatal Python error: %s: %s", func ? func : "?", g_pyFatalMsg);
++  FatalLog("_Py_FatalErrorFormat", 0, reinterpret_cast<u64>(__builtin_return_address(0)),
++           reinterpret_cast<u64>(__builtin_frame_address(0)), text, false, 0, 0);
++  __real__Py_FatalErrorFunc(func, g_pyFatalMsg);
 +}
 +
 +extern "C" void __wrap_abort(void)
@@ -1586,12 +2601,194 @@ index 0000000..cd8a189
 +  RunOnStack(LogNativeException, g_walkStack + sizeof(g_walkStack));
 +  // Returning makes libounce's __libnx_exception_returnentry call svcBreak: the process ends as before.
 +}
++
++extern "C" unsigned long long Switch2TextBase(void)
++{
++  ResolveModule();
++  return g_textBase;
++}
++
++// ----------------------------------------------------------------------------------------------
++// CPU-exception entry (see the header comment). The kernel enters here on the faulting thread with
++// x0 = exception type (error_desc), x1 = its ThreadExceptionFrameA64 (x0-x8, lr, sp, elr, pstate,
++// afsr0/1, esr, far), x9-x29 still holding the faulting thread's values, x2-x8 free.
++// ----------------------------------------------------------------------------------------------
++extern "C"
++{
++alignas(16) u8 g_excStack[0x8000];
++u64 g_excRegs[24]; // [0..21] = x9..x30 at entry, [22] = entry sp
++u32 g_excLock = 0; // first thread in owns the handler
++u64 g_excOwner = 0; // its tpidrro_el0
++void Switch2ExceptionEntryC(u64 type, u64 info) __attribute__((noreturn, used));
++}
++
++// Another thread faulting meanwhile is parked; a fault inside the handler (same thread) exits.
++asm(R"ASM(
++  .pushsection .text.__libnx_exception_entry,"ax",%progbits
++  .global __libnx_exception_entry
++  .type __libnx_exception_entry, %function
++  .p2align 2
++__libnx_exception_entry:
++  adrp  x2, g_excLock
++  add   x2, x2, :lo12:g_excLock
++1:
++  ldaxr w3, [x2]
++  cbnz  w3, 2f
++  mov   w3, #1
++  stlxr w4, w3, [x2]
++  cbnz  w4, 1b
++  b     4f
++2:
++  clrex
++  mrs   x3, tpidrro_el0
++  adrp  x4, g_excOwner
++  ldr   x4, [x4, :lo12:g_excOwner]
++  cmp   x3, x4
++  b.eq  3f
++5:
++  mov   x0, #-1
++  lsr   x0, x0, #1
++  svc   #0xb
++  b     5b
++3:
++  svc   #0x7
++  b     3b
++4:
++  mrs   x3, tpidrro_el0
++  adrp  x4, g_excOwner
++  str   x3, [x4, :lo12:g_excOwner]
++  adrp  x2, g_excRegs
++  add   x2, x2, :lo12:g_excRegs
++  stp   x9, x10, [x2, #0]
++  stp   x11, x12, [x2, #16]
++  stp   x13, x14, [x2, #32]
++  stp   x15, x16, [x2, #48]
++  stp   x17, x18, [x2, #64]
++  stp   x19, x20, [x2, #80]
++  stp   x21, x22, [x2, #96]
++  stp   x23, x24, [x2, #112]
++  stp   x25, x26, [x2, #128]
++  stp   x27, x28, [x2, #144]
++  stp   x29, x30, [x2, #160]
++  mov   x3, sp
++  str   x3, [x2, #176]
++  adrp  x3, g_excStack
++  add   x3, x3, :lo12:g_excStack
++  add   x3, x3, #8, lsl #12
++  mov   sp, x3
++  mov   x29, #0
++  bl    Switch2ExceptionEntryC
++6:
++  b     6b
++  .size __libnx_exception_entry, .-__libnx_exception_entry
++  .popsection
++)ASM");
++
++namespace
++{
++// One write on the pre-opened crash.txt handle, no lock (the first thing the entry does).
++void ExcWrite(const char* buf, size_t len)
++{
++  if (!g_crashOpen.load() || !len)
++    return;
++  const s64 off = g_crashOff.fetch_add(static_cast<s64>(len));
++  fsFileWrite(&g_crashFile, off, buf, len, FsWriteOption_Flush);
++}
++} // namespace
++
++extern "C" void Switch2ExceptionEntryC(u64 type, u64 info)
++{
++  // 1. Marker + raw frame, one write.
++  {
++    Out o(g_excBuf);
++    o.Dec(static_cast<long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL));
++    o.Put(" EXC-ENTRY");
++    o.Kv("type", type);
++    o.Kv("info", info);
++    o.Kv("entry_sp", g_excRegs[22]);
++    u64 tid = 0;
++    svcGetThreadId(&tid, CUR_THREAD_HANDLE);
++    o.Put(" tid=");
++    o.Dec(static_cast<long long>(tid));
++    o.Put("\n");
++    u64 len = 0x100;
++    if (!Readable(info, len))
++      len = Readable(info, sizeof(ThreadExceptionFrameA64)) ? sizeof(ThreadExceptionFrameA64) : 0;
++    for (u64 off = 0; off < len; off += 16)
++    {
++      o.Put(" +");
++      o.Hex(off);
++      o.Put(":");
++      o.Kv("", *reinterpret_cast<const u64*>(info + off));
++      o.Kv("", *reinterpret_cast<const u64*>(info + off + 8));
++      o.Put("\n");
++    }
++    ExcWrite(o.buf, o.n);
++  }
++  // 2. ThreadExceptionDump from the A64 frame and the saved registers, then the usual dump.
++  std::memset(&g_dump, 0, sizeof(g_dump));
++  g_dump.error_desc = static_cast<u32>(type);
++  if (Readable(info, sizeof(ThreadExceptionFrameA64)))
++  {
++    const auto* f = reinterpret_cast<const ThreadExceptionFrameA64*>(info);
++    for (int i = 0; i < 9; ++i)
++      g_dump.cpu_gprs[i].x = f->cpu_gprs[i];
++    g_dump.lr.x = f->lr;
++    g_dump.sp.x = f->sp;
++    g_dump.pc.x = f->elr_el1;
++    g_dump.pstate = f->pstate;
++    g_dump.afsr0 = f->afsr0;
++    g_dump.afsr1 = f->afsr1;
++    g_dump.esr = f->esr;
++    g_dump.far.x = f->far;
++  }
++  for (int i = 9; i < 29; ++i)
++    g_dump.cpu_gprs[i].x = g_excRegs[i - 9];
++  g_dump.fp.x = g_excRegs[20];
++  g_exceptionTid.store(1);
++  LogNativeException();
++  {
++    Out o(g_excBuf);
++    o.Put("EXC-END: svcBreak\n");
++    ExcWrite(o.buf, o.n);
++  }
++  // 3. End the process: system error panel as before; svcExitProcess if the break returns.
++  __real_svcBreak(0, 0, 0);
++  svcExitProcess();
++  for (;;)
++    svcSleepThread(INT64_MAX);
++}
++
+diff --git a/xbmc/platform/switch2/DiagLog.h b/xbmc/platform/switch2/DiagLog.h
+new file mode 100644
+index 0000000..eadec18
+--- /dev/null
++++ b/xbmc/platform/switch2/DiagLog.h
+@@ -0,0 +1,18 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ */
++// SWITCH2_DIAG_LOG(fmt, ...) for shared Kodi sources: on Switch 2 diagnostics builds (SWITCH2_DIAG=1)
++// a capped (40 hits per call site) line to sdmc:/switch/kodi/boot.txt (PosixCompat.h); everywhere
++// else a no-op that does not evaluate its arguments.
++#pragma once
++
++#if defined(TARGET_SWITCH2)
++#include "platform/switch2/PosixCompat.h"
++#endif
++#ifndef SWITCH2_DIAG_LOG
++#define SWITCH2_DIAG_LOG(...) \
++  do \
++  { \
++  } while (0)
++#endif
 diff --git a/xbmc/platform/switch2/DlStubs.cpp b/xbmc/platform/switch2/DlStubs.cpp
 new file mode 100644
-index 0000000..574b9b9
+index 0000000..3ad1fcf
 --- /dev/null
 +++ b/xbmc/platform/switch2/DlStubs.cpp
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,76 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -1602,21 +2799,57 @@ index 0000000..574b9b9
 +
 +#include "dlfcn.h"
 +
++#include "StaticAddons.h"
++
++#include <atomic>
++
++// The static add-on registry (StaticAddons.cpp) is referenced weakly: without it every dlopen fails,
++// exactly as before it existed.
++#pragma weak kodi_static_addon_find
++#pragma weak kodi_static_addon_is_handle
++#pragma weak kodi_static_addon_symbol
++
 +namespace
 +{
 +char kNoLoader[] = "dynamic loading is not available on Switch 2";
-+}
++char kNoSymbol[] = "symbol is not exported by this statically linked add-on";
 +
-+extern "C" void* dlopen(const char*, int)
++// dlerror() never returns nullptr here: Kodi passes its result straight to a log format.
++std::atomic<char*> g_lastError{kNoLoader};
++
++bool IsStaticAddon(void* handle)
 +{
++  return handle && kodi_static_addon_is_handle && kodi_static_addon_is_handle(handle);
++}
++} // namespace
++
++// Returns a pseudo-handle (a registry entry) when `file` names a binary add-on library that is
++// linked into kodi.bin; every other library fails to load.
++extern "C" void* dlopen(const char* file, int)
++{
++  if (file && kodi_static_addon_find)
++  {
++    if (const KodiStaticAddon* addon = kodi_static_addon_find(file))
++      return const_cast<KodiStaticAddon*>(addon);
++  }
++  g_lastError.store(kNoLoader);
 +  return nullptr;
 +}
 +
-+extern "C" void* dlsym(void*, const char*)
++extern "C" void* dlsym(void* handle, const char* name)
 +{
++  if (IsStaticAddon(handle))
++  {
++    if (void* address = kodi_static_addon_symbol(static_cast<const KodiStaticAddon*>(handle), name))
++      return address;
++    g_lastError.store(kNoSymbol);
++    return nullptr;
++  }
++  g_lastError.store(kNoLoader);
 +  return nullptr;
 +}
 +
++// Static add-ons are never unloaded; their code and data stay in kodi.bin.
 +extern "C" int dlclose(void*)
 +{
 +  return 0;
@@ -1624,7 +2857,7 @@ index 0000000..574b9b9
 +
 +extern "C" char* dlerror(void)
 +{
-+  return kNoLoader;
++  return g_lastError.load();
 +}
 +
 +// Kodi's Windows-DLL emulation layer (cores/DllLoader/exports/emu_msvcrt) is not built on Switch 2;
@@ -1632,6 +2865,861 @@ index 0000000..574b9b9
 +extern "C" void init_emu_environ() {}
 +extern "C" void update_emu_environ() {}
 +extern "C" void cleanup_emu_environ() {}
+diff --git a/xbmc/platform/switch2/OsslTrace.cpp b/xbmc/platform/switch2/OsslTrace.cpp
+new file mode 100644
+index 0000000..0a2fe77
+--- /dev/null
++++ b/xbmc/platform/switch2/OsslTrace.cpp
+@@ -0,0 +1,849 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++// Switch 2 OpenSSL support. Always built: Switch2OsslWarmUp (bottom of the file). Diagnostics build
++// only (ENABLE_SWITCH2_DIAG=ON, SWITCH2_DIAG=1): the breadcrumbs, crumbs and self-test below.
++//
++// OpenSSL breadcrumbs for the Switch 2 port (rev 18 instrument). Active only when
++// sdmc:/switch/kodi/trace-ossl.flag exists at start-up (Switch2OsslTraceInit, called from main).
++// Each function in OSSL_TRACED below is linked with -Wl,--wrap=<fn> (cmake/scripts/switch2/
++// Install.cmake, same list). Logging window: armed by the first EVP_MD_fetch from a thread other
++// than the main thread, then the next kWindow lines are written, from any thread:
++//   "<ms> OSSL <fn> enter a0=.. a1=.. .. tid=.."   (written and flushed before the real call)
++//   "<ms> OSSL <fn> ret=.. tid=.."
++// Every line also carries "sp=<sp> room=<sp - stack bottom>" (rev 20), the stack bottom being the
++// current libnx Thread's stack_mirror (the mapping threads run on; stack_mem if sp lies there
++// instead), its size stack_sz; the first line of each thread is preceded by one
++// "<ms> OSSL-STACK tid=.. mem=.. mirror=.. size=.." line.
++// EVP_MD_fetch itself is logged whenever the flag is set. Lines go to boot.txt through the
++// synchronous raw append (no malloc, no stdio, no OpenSSL), so the last line before a silent death
++// names the call that did not return.
++//
++// The wrappers forward x0-x7 unchanged and return x0, so a traced function must take at most 8
++// integer/pointer arguments (a 9th is on the caller's stack and would be read from the wrapper's
++// frame), none variadic, no floating-point or by-value structure argument or result. Every entry
++// below was counted against deps/build/openssl (3.0.22) definitions (rev 19; ossl_algorithm_do_all,
++// 9 parameters, was wrapped in rev 18 and broke the fetch it was tracing: removed).
++
++#include "PosixCompat.h"
++
++#include <atomic>
++#include <cstdint>
++#include <initializer_list>
++#include <unistd.h>
++
++#include <switch.h>
++
++#if SWITCH2_DIAG
++// ============================ diagnostics build only (ENABLE_SWITCH2_DIAG) ============================
++
++namespace
++{
++constexpr int kWindow = 20000;
++bool g_traceOn = false;
++u64 g_mainTid = 0;
++std::atomic<bool> g_armedOnce{false};
++std::atomic<int> g_window{0};
++
++u64 Tid()
++{
++  u64 tid = 0;
++  svcGetThreadId(&tid, CUR_THREAD_HANDLE);
++  return tid;
++}
++
++// Stack bounds of the calling thread from libnx's Thread (threadGetSelf: stack_mem, stack_mirror,
++// stack_sz). Returns sp - bottom, or -1 when sp is in neither range (or there is no Thread).
++long long StackRoom(uintptr_t sp)
++{
++  const Thread* t = threadGetSelf();
++  if (!t || !t->stack_sz)
++    return -1;
++  for (const void* base : {t->stack_mirror, t->stack_mem})
++  {
++    const uintptr_t lo = reinterpret_cast<uintptr_t>(base);
++    if (lo && sp >= lo && sp < lo + t->stack_sz)
++      return static_cast<long long>(sp - lo);
++  }
++  return -1;
++}
++
++void LogStackOnce();
++
++struct Line
++{
++  char b[400];
++  unsigned n = 0;
++  void Put(const char* s)
++  {
++    while (*s && n < sizeof(b) - 2)
++      b[n++] = *s++;
++  }
++  void Hex(uintptr_t v)
++  {
++    char t[19];
++    t[0] = '0';
++    t[1] = 'x';
++    int i = 2;
++    bool started = false;
++    for (int sh = 60; sh >= 0; sh -= 4)
++    {
++      const int d = (v >> sh) & 0xf;
++      if (d || started || sh == 0)
++      {
++        t[i++] = "0123456789abcdef"[d];
++        started = true;
++      }
++    }
++    t[i] = '\0';
++    Put(t);
++  }
++  void Dec(unsigned long long u)
++  {
++    char t[24];
++    int i = 23;
++    t[i] = '\0';
++    do
++    {
++      t[--i] = static_cast<char>('0' + u % 10);
++      u /= 10;
++    } while (u && i > 0);
++    Put(t + i);
++  }
++  void Begin(const char* fn)
++  {
++    LogStackOnce();
++    Dec(armTicksToNs(armGetSystemTick()) / 1000000ULL);
++    Put(" OSSL ");
++    Put(fn);
++  }
++  void End()
++  {
++    uintptr_t sp;
++    asm volatile("mov %0, sp" : "=r"(sp));
++    Put(" sp=");
++    Hex(sp);
++    Put(" room=");
++    const long long room = StackRoom(sp);
++    if (room < 0)
++      Put("?");
++    else
++      Dec(static_cast<unsigned long long>(room));
++    Put(" tid=");
++    Dec(Tid());
++    b[n++] = '\n';
++    Switch2RawAppend("/switch/kodi/boot.txt", b, n);
++  }
++};
++
++// One "OSSL-STACK" line the first time a thread logs (up to 64 threads remembered).
++std::atomic<u64> g_seenTids[64];
++
++void LogStackOnce()
++{
++  const u64 tid = Tid();
++  for (auto& slot : g_seenTids)
++  {
++    u64 cur = slot.load(std::memory_order_relaxed);
++    if (cur == tid)
++      return;
++    if (cur == 0)
++    {
++      if (!slot.compare_exchange_strong(cur, tid))
++      {
++        if (cur == tid)
++          return;
++        continue;
++      }
++      const Thread* t = threadGetSelf();
++      Line l;
++      l.Dec(armTicksToNs(armGetSystemTick()) / 1000000ULL);
++      l.Put(" OSSL-STACK tid=");
++      l.Dec(tid);
++      l.Put(" mem=");
++      l.Hex(t ? reinterpret_cast<uintptr_t>(t->stack_mem) : 0);
++      l.Put(" mirror=");
++      l.Hex(t ? reinterpret_cast<uintptr_t>(t->stack_mirror) : 0);
++      l.Put(" size=");
++      l.Hex(t ? t->stack_sz : 0);
++      l.b[l.n++] = '\n';
++      Switch2RawAppend("/switch/kodi/boot.txt", l.b, l.n);
++      return;
++    }
++  }
++}
++
++// True when this call is to be logged (and takes one line of the window).
++bool Take(bool always)
++{
++  if (!g_traceOn)
++    return false;
++  if (always)
++    return true;
++  int w = g_window.load(std::memory_order_relaxed);
++  while (w > 0)
++    if (g_window.compare_exchange_weak(w, w - 1, std::memory_order_relaxed))
++      return true;
++  return false;
++}
++
++void Enter(const char* fn, const uintptr_t* a, int nargs)
++{
++  Line l;
++  l.Begin(fn);
++  l.Put(" enter");
++  for (int i = 0; i < nargs; ++i)
++  {
++    char k[5] = {' ', 'a', static_cast<char>('0' + i), '=', '\0'};
++    l.Put(k);
++    l.Hex(a[i]);
++  }
++  l.End();
++}
++
++void Ret(const char* fn, uintptr_t r)
++{
++  Line l;
++  l.Begin(fn);
++  l.Put(" ret=");
++  l.Hex(r);
++  l.End();
++}
++} // namespace
++
++// Source breadcrumbs from inside libcrypto (deps/patches/openssl/0002-switch2-crumbs.patch: S2CRUMB
++// calls a WEAK Switch2OsslCrumb; this strong definition makes them live). Logged only while the
++// window is armed, one line each: "<ms> CRUMB <where> a=.. b=.. tid=..". `where` is a string
++// literal in libcrypto, or an OSSL_ALGORITHM's algorithm_names (provider static data).
++extern "C" void Switch2OsslCrumb(const char* where, uintptr_t a, uintptr_t b)
++{
++  if (!Take(false))
++    return;
++  LogStackOnce();
++  Line l;
++  l.Dec(armTicksToNs(armGetSystemTick()) / 1000000ULL);
++  l.Put(" CRUMB ");
++  l.Put(where ? where : "?");
++  l.Put(" a=");
++  l.Hex(a);
++  l.Put(" b=");
++  l.Hex(b);
++  l.End();
++}
++
++extern "C" void Switch2OsslTraceInit(void)
++{
++  g_mainTid = Tid();
++  g_traceOn = access("sdmc:/switch/kodi/trace-ossl.flag", F_OK) == 0;
++  Switch2BootLog("ossl-trace-flag", g_traceOn ? 1 : 0);
++}
++
++#define OSSL_ARGS uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, \
++                  uintptr_t a6, uintptr_t a7
++#define OSSL_FWD a0, a1, a2, a3, a4, a5, a6, a7
++
++// OSSL_WRAP(fn, number of arguments to print, logged outside the window)
++#define OSSL_WRAP(fn, nargs, always) \
++  extern "C" uintptr_t __real_##fn(OSSL_ARGS); \
++  extern "C" uintptr_t __wrap_##fn(OSSL_ARGS) \
++  { \
++    if (!Take(always)) \
++      return __real_##fn(OSSL_FWD); \
++    const uintptr_t a[8] = {OSSL_FWD}; \
++    Enter(#fn, a, nargs); \
++    const uintptr_t r = __real_##fn(OSSL_FWD); \
++    if (Take(always)) \
++      Ret(#fn, r); \
++    return r; \
++  }
++
++// The first EVP_MD_fetch from a non-main thread opens the window (before its own enter line).
++extern "C" uintptr_t __real_EVP_MD_fetch(OSSL_ARGS);
++extern "C" uintptr_t __wrap_EVP_MD_fetch(OSSL_ARGS)
++{
++  if (!g_traceOn)
++    return __real_EVP_MD_fetch(OSSL_FWD);
++  if (Tid() != g_mainTid && !g_armedOnce.exchange(true))
++  {
++    g_window.store(kWindow);
++    Switch2BootLog("ossl-trace-window-armed", kWindow);
++  }
++  const uintptr_t a[8] = {OSSL_FWD};
++  Enter("EVP_MD_fetch", a, 3);
++  const uintptr_t r = __real_EVP_MD_fetch(OSSL_FWD);
++  Ret("EVP_MD_fetch", r);
++  return r;
++}
++
++// clang-format off
++// EVP digest entry points
++OSSL_WRAP(EVP_MD_CTX_new, 0, false)
++OSSL_WRAP(EVP_DigestInit_ex, 3, false)
++OSSL_WRAP(EVP_DigestInit_ex2, 3, false)
++OSSL_WRAP(EVP_MD_up_ref, 1, false)
++OSSL_WRAP(EVP_MD_free, 1, false)
++OSSL_WRAP(evp_generic_fetch, 4, false)
++OSSL_WRAP(evp_md_new, 0, false)
++// method store / construction (crypto/property/property.c, crypto/core_fetch.c)
++OSSL_WRAP(ossl_method_store_new, 1, false)
++OSSL_WRAP(ossl_method_store_fetch, 5, false)
++OSSL_WRAP(ossl_method_store_add, 7, false)
++OSSL_WRAP(ossl_method_store_cache_get, 5, false)
++OSSL_WRAP(ossl_method_store_cache_set, 7, false)
++OSSL_WRAP(ossl_method_lock_store, 1, false)
++OSSL_WRAP(ossl_method_unlock_store, 1, false)
++OSSL_WRAP(ossl_method_construct, 6, false)
++// properties (crypto/property/property_parse.c, property_string.c, property_query.c)
++OSSL_WRAP(ossl_parse_property, 2, false)
++OSSL_WRAP(ossl_parse_query, 3, false)
++OSSL_WRAP(ossl_property_merge, 2, false)
++OSSL_WRAP(ossl_property_name, 3, false)
++OSSL_WRAP(ossl_property_value, 3, false)
++OSSL_WRAP(ossl_property_match_count, 2, false)
++OSSL_WRAP(ossl_property_free, 1, false)
++OSSL_WRAP(ossl_property_is_enabled, 3, false)
++OSSL_WRAP(ossl_ctx_global_properties, 2, false)
++// providers, names, library context
++OSSL_WRAP(ossl_provider_ctx, 1, false)
++OSSL_WRAP(ossl_provider_libctx, 1, false)
++OSSL_WRAP(ossl_provider_up_ref, 1, false)
++OSSL_WRAP(ossl_provider_test_operation_bit, 3, false)
++OSSL_WRAP(ossl_provider_set_operation_bit, 2, false)
++OSSL_WRAP(ossl_provider_query_operation, 3, false)
++OSSL_WRAP(ossl_provider_unquery_operation, 3, false)
++OSSL_WRAP(ossl_provider_doall_activated, 3, false)
++OSSL_WRAP(ossl_namemap_stored, 1, false)
++OSSL_WRAP(ossl_namemap_name2num, 2, false)
++OSSL_WRAP(ossl_namemap_name2num_n, 3, false)
++OSSL_WRAP(ossl_namemap_add_name, 3, false)
++OSSL_WRAP(ossl_namemap_add_names, 4, false)
++OSSL_WRAP(ossl_namemap_num2name, 3, false)
++OSSL_WRAP(ossl_lib_ctx_get_data, 3, false)
++OSSL_WRAP(OPENSSL_LH_new, 2, false)
++OSSL_WRAP(OPENSSL_LH_insert, 2, false)
++OSSL_WRAP(OPENSSL_LH_retrieve, 2, false)
++// error state and thread-local storage
++OSSL_WRAP(ERR_set_mark, 0, false)
++OSSL_WRAP(ERR_pop_to_mark, 0, false)
++OSSL_WRAP(ERR_clear_last_mark, 0, false)
++OSSL_WRAP(ERR_new, 0, false)
++OSSL_WRAP(ERR_set_debug, 3, false)
++OSSL_WRAP(ERR_clear_error, 0, false)
++OSSL_WRAP(ossl_err_get_state_int, 0, false)
++OSSL_WRAP(ossl_init_thread_start, 3, false)
++OSSL_WRAP(CRYPTO_THREAD_run_once, 2, false)
++OSSL_WRAP(CRYPTO_THREAD_init_local, 2, false)
++OSSL_WRAP(CRYPTO_THREAD_set_local, 2, false)
++OSSL_WRAP(CRYPTO_THREAD_get_local, 1, false)
++OSSL_WRAP(CRYPTO_THREAD_lock_new, 0, false)
++OSSL_WRAP(CRYPTO_THREAD_read_lock, 1, false)
++OSSL_WRAP(CRYPTO_THREAD_write_lock, 1, false)
++OSSL_WRAP(CRYPTO_THREAD_unlock, 1, false)
++// allocation (hot: window only)
++OSSL_WRAP(CRYPTO_malloc, 3, false)
++OSSL_WRAP(CRYPTO_zalloc, 3, false)
++OSSL_WRAP(CRYPTO_realloc, 4, false)
++OSSL_WRAP(CRYPTO_free, 3, false)
++// clang-format on
++
++// ----------------------------------------------------------------------------------------------
++// OpenSSL self-test (rev 20), only with sdmc:/switch/kodi/ossl-selftest.flag, run from main before
++// Kodi starts: MD5("x") through EVP_MD_fetch / EVP_MD_CTX_new / EVP_DigestInit_ex / Update / Final /
++// free, on the main thread, then in a std::thread (default attributes: 1 MiB from the
++// pthread_create wrapper), then in a pthread with a 256 KiB stack; each joined before the next.
++// Every step is one synchronous boot.txt line "SELFTEST <where> <step> <value>".
++// ----------------------------------------------------------------------------------------------
++#include <openssl/crypto.h>
++#include <openssl/evp.h>
++#include <openssl/ssl.h>
++
++#include <atomic>
++#include <cstdio>
++#include <cstring>
++#include <pthread.h>
++#include <thread>
++
++namespace
++{
++void SelfTestStep(const char* where, const char* step, long long value)
++{
++  char what[96];
++  std::strcpy(what, "SELFTEST ");
++  std::strncat(what, where, 20);
++  std::strcat(what, " ");
++  std::strncat(what, step, 40);
++  Switch2BootLog(what, value);
++}
++
++// One digest of "x" with `alg` (MD5 or SHA256). A "pre <step>" line is written (synchronously)
++// before each call, the result after it, so a death inside a call names that call.
++void SelfTestRun(const char* where, const char* alg = "MD5")
++{
++  SelfTestStep(where, "start", 0);
++  SelfTestStep(where, "pre EVP_MD_fetch", 0);
++  EVP_MD* md = EVP_MD_fetch(nullptr, alg, nullptr);
++  SelfTestStep(where, "EVP_MD_fetch", reinterpret_cast<long long>(md));
++  if (!md)
++    return;
++  SelfTestStep(where, "pre EVP_MD_CTX_new", 0);
++  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
++  SelfTestStep(where, "EVP_MD_CTX_new", reinterpret_cast<long long>(ctx));
++  if (ctx)
++  {
++    SelfTestStep(where, "pre EVP_DigestInit_ex", 0);
++    int rc = EVP_DigestInit_ex(ctx, md, nullptr);
++    SelfTestStep(where, "EVP_DigestInit_ex", rc);
++    SelfTestStep(where, "pre EVP_DigestUpdate", 0);
++    rc = EVP_DigestUpdate(ctx, "x", 1);
++    SelfTestStep(where, "EVP_DigestUpdate", rc);
++    unsigned char out[EVP_MAX_MD_SIZE];
++    unsigned int len = 0;
++    SelfTestStep(where, "pre EVP_DigestFinal_ex", 0);
++    rc = EVP_DigestFinal_ex(ctx, out, &len);
++    SelfTestStep(where, "EVP_DigestFinal_ex", rc);
++    // MD5("x") = 9dd4e461268c8034f5c8564e155c67a6
++    static const unsigned char md5x[16] = {0x9d, 0xd4, 0xe4, 0x61, 0x26, 0x8c, 0x80, 0x34,
++                                           0xf5, 0xc8, 0x56, 0x4e, 0x15, 0x5c, 0x67, 0xa6};
++    // SHA256("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881
++    static const unsigned char sha256x[32] = {
++        0x2d, 0x71, 0x16, 0x42, 0xb7, 0x26, 0xb0, 0x44, 0x01, 0x62, 0x7c, 0xa9, 0xfb, 0xac, 0x32, 0xf5,
++        0xc8, 0x53, 0x0f, 0xb1, 0x90, 0x3c, 0xc4, 0xdb, 0x02, 0x25, 0x87, 0x17, 0x92, 0x1a, 0x48, 0x81};
++    const bool isSha = std::strcmp(alg, "SHA256") == 0;
++    const unsigned char* want = isSha ? sha256x : md5x;
++    const unsigned int wantLen = isSha ? 32 : 16;
++    SelfTestStep(where, isSha ? "sha256-matches" : "md5-matches",
++                 len == wantLen && std::memcmp(out, want, wantLen) == 0 ? 1 : 0);
++    EVP_MD_CTX_free(ctx);
++    SelfTestStep(where, "EVP_MD_CTX_free", 0);
++  }
++  EVP_MD_free(md);
++  SelfTestStep(where, "EVP_MD_free done", 0);
++}
++
++// Expected digests of "x" for the concurrent tests.
++bool DigestMatches(const char* alg, const unsigned char* out, unsigned int len)
++{
++  static const unsigned char md5x[] = {0x9d, 0xd4, 0xe4, 0x61, 0x26, 0x8c, 0x80, 0x34,
++                                       0xf5, 0xc8, 0x56, 0x4e, 0x15, 0x5c, 0x67, 0xa6};
++  static const unsigned char sha1x[] = {0x11, 0xf6, 0xad, 0x8e, 0xc5, 0x2a, 0x29, 0x84, 0xab, 0xaa,
++                                        0xfd, 0x7c, 0x3b, 0x51, 0x65, 0x03, 0x78, 0x5c, 0x20, 0x72};
++  static const unsigned char sha256x[] = {
++      0x2d, 0x71, 0x16, 0x42, 0xb7, 0x26, 0xb0, 0x44, 0x01, 0x62, 0x7c, 0xa9, 0xfb, 0xac, 0x32, 0xf5,
++      0xc8, 0x53, 0x0f, 0xb1, 0x90, 0x3c, 0xc4, 0xdb, 0x02, 0x25, 0x87, 0x17, 0x92, 0x1a, 0x48, 0x81};
++  static const unsigned char sha512x[] = {
++      0xa4, 0xab, 0xd4, 0x44, 0x8c, 0x49, 0x56, 0x2d, 0x82, 0x81, 0x15, 0xd1, 0x3a, 0x1f, 0xcc, 0xea,
++      0x92, 0x7f, 0x52, 0xb4, 0xd5, 0x45, 0x92, 0x97, 0xf8, 0xb4, 0x3e, 0x42, 0xda, 0x89, 0x23, 0x8b,
++      0xc1, 0x36, 0x26, 0xe4, 0x3d, 0xcb, 0x38, 0xdd, 0xb0, 0x82, 0x48, 0x89, 0x27, 0xec, 0x90, 0x4f,
++      0xb4, 0x20, 0x57, 0x44, 0x39, 0x83, 0xe8, 0x85, 0x85, 0x17, 0x9d, 0x50, 0x55, 0x1a, 0xfe, 0x62};
++  const unsigned char* want = nullptr;
++  unsigned int n = 0;
++  if (!std::strcmp(alg, "MD5")) { want = md5x; n = sizeof(md5x); }
++  else if (!std::strcmp(alg, "SHA1")) { want = sha1x; n = sizeof(sha1x); }
++  else if (!std::strcmp(alg, "SHA256")) { want = sha256x; n = sizeof(sha256x); }
++  else if (!std::strcmp(alg, "SHA512")) { want = sha512x; n = sizeof(sha512x); }
++  return want && len == n && std::memcmp(out, want, n) == 0;
++}
++
++// T6-T8: kThreads std::threads (1 MiB) meet at a spin barrier, then all make their fetch at once.
++// A thread logs "ready" before the barrier and nothing between the barrier and its fetch (boot.txt
++// writes are serialised and would stagger the fetches), then the fetch result and the digest.
++constexpr int kThreads = 4;
++
++void ConcurrentFetch(const char* tag, const char* alg, OSSL_LIB_CTX* libctx, std::atomic<int>* barrier)
++{
++  SelfTestStep(tag, "cpu", svcGetCurrentProcessorNumber());
++  SelfTestStep(tag, "ready (pre EVP_MD_fetch)", 0);
++  barrier->fetch_add(1);
++  while (barrier->load() < kThreads)
++    std::this_thread::yield();
++  EVP_MD* md = EVP_MD_fetch(libctx, alg, nullptr);
++  SelfTestStep(tag, "EVP_MD_fetch", reinterpret_cast<long long>(md));
++  if (!md)
++    return;
++  unsigned char out[EVP_MAX_MD_SIZE];
++  unsigned int len = 0;
++  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
++  const int rc = ctx && EVP_DigestInit_ex(ctx, md, nullptr) && EVP_DigestUpdate(ctx, "x", 1) &&
++                 EVP_DigestFinal_ex(ctx, out, &len);
++  SelfTestStep(tag, "digest rc", rc);
++  SelfTestStep(tag, "matches", rc && DigestMatches(alg, out, len) ? 1 : 0);
++  EVP_MD_CTX_free(ctx);
++  EVP_MD_free(md);
++  SelfTestStep(tag, "done", 0);
++}
++
++// One round: kThreads threads, digest i = algs[i] (or all MD5), fetched from libctx (NULL = default).
++void ConcurrentRound(const char* prefix, bool sameDigest, OSSL_LIB_CTX* libctx)
++{
++  static const char* const algs[kThreads] = {"MD5", "SHA1", "SHA256", "SHA512"};
++  static char tags[kThreads][24];
++  std::atomic<int> barrier{0};
++  std::thread threads[kThreads];
++  int started = 0;
++  for (int i = 0; i < kThreads; ++i)
++  {
++    const char* alg = sameDigest ? "MD5" : algs[i];
++    std::snprintf(tags[i], sizeof(tags[i]), "%s-%d-%s", prefix, i, alg);
++    try
++    {
++      threads[i] = std::thread(ConcurrentFetch, tags[i], alg, libctx, &barrier);
++      ++started;
++    }
++    catch (...)
++    {
++      SelfTestStep(prefix, "std::thread failed", i);
++      barrier.fetch_add(1); // let the others go
++    }
++  }
++  SelfTestStep(prefix, "threads started", started);
++  for (int i = 0; i < kThreads; ++i)
++    if (threads[i].joinable())
++      threads[i].join();
++  SelfTestStep(prefix, "all-joined", 0);
++}
++
++// std::thread (1 MiB through the pthread_create wrapper) running fn; joined. Logs create/join.
++template<typename F>
++void OnThread(const char* where, F fn)
++{
++  SelfTestStep(where, "pre std::thread", 0);
++  try
++  {
++    std::thread t(fn);
++    t.join();
++    SelfTestStep(where, "joined", 0);
++  }
++  catch (...)
++  {
++    SelfTestStep(where, "std::thread failed", 0);
++  }
++}
++
++void* SelfTest256K(void*)
++{
++  SelfTestRun("thr256K");
++  return nullptr;
++}
++} // namespace
++
++// Flag sdmc:/switch/kodi/ossl-selftest.flag: absent = 0 (no self-test); any content not starting
++// with 'T' = 1 (warm-up, then main, thr1M, thr256K); 'T' = 2 (no warm-up: thr1M then thr256K);
++// 'T1'..'T4' = 21..24, one experiment each, all without the warm-up so the experiment makes the
++// process's first OpenSSL method fetch:
++//   T1  first EVP_MD_fetch(MD5) on a std::thread (1 MiB)              - the decisive test
++//   T2  as T1, but the thread first pins itself to core 0 (svcSetThreadCoreMask, rc logged)
++//   T3  a std::thread does the first fetch (MD5), exits and is joined; a second std::thread
++//       then fetches SHA256                                            - heap/lifetime hypothesis
++//   T4  first fetch on the main thread                                 - control, should pass
++//   T5  main thread: OPENSSL_init_crypto(LOAD_CONFIG) + OPENSSL_init_ssl (no fetch); then the first
++//       fetch (MD5) on a std::thread - the field order (library init on main, method on worker)
++//   T6  4 std::threads released together by a barrier, each the first fetch of a different digest
++//       (MD5, SHA1, SHA256, SHA512) - concurrent first construction
++//   T7  as T6, all four fetch MD5
++//   T8  T6 five times, each round in a fresh OSSL_LIB_CTX (new / fetch(libctx) / free)
++// T1/T2/T5 also log svcGetCurrentProcessorNumber() on the main thread and on the test thread
++// before the fetch; T2 logs svcGetThreadCoreMask after pinning.
++// Every mode logs "ossl-selftest-mode <n>" and its SELFTEST lines, then Kodi starts as usual.
++extern "C" int Switch2OsslSelfTestMode(void)
++{
++  FILE* f = std::fopen("sdmc:/switch/kodi/ossl-selftest.flag", "rb");
++  if (!f)
++    return 0;
++  const int c = std::fgetc(f);
++  const int c2 = c == 'T' ? std::fgetc(f) : EOF;
++  std::fclose(f);
++  int mode = 1;
++  if (c == 'T')
++    mode = (c2 >= '1' && c2 <= '8') ? 20 + (c2 - '0') : 2;
++  Switch2BootLog("ossl-selftest-mode", mode);
++  return mode;
++}
++
++extern "C" void Switch2OsslSelfTest(int mode)
++{
++  switch (mode)
++  {
++    case 0:
++      return;
++    case 21: // T1
++      SelfTestStep("T1-main", "cpu", svcGetCurrentProcessorNumber());
++      OnThread("T1-thr1M", [] {
++        SelfTestStep("T1-thr1M", "cpu", svcGetCurrentProcessorNumber());
++        SelfTestRun("T1-thr1M");
++      });
++      return;
++    case 22: // T2
++      SelfTestStep("T2-main", "cpu", svcGetCurrentProcessorNumber());
++      OnThread("T2-core0", [] {
++        SelfTestStep("T2-core0", "pre svcSetThreadCoreMask", 0);
++        const Result rc = svcSetThreadCoreMask(CUR_THREAD_HANDLE, 0, 1);
++        SelfTestStep("T2-core0", "svcSetThreadCoreMask rc", static_cast<long long>(rc));
++        s32 preferred = -1;
++        u64 mask = 0;
++        const Result grc = svcGetThreadCoreMask(&preferred, &mask, CUR_THREAD_HANDLE);
++        SelfTestStep("T2-core0", "svcGetThreadCoreMask rc", static_cast<long long>(grc));
++        SelfTestStep("T2-core0", "preferred_core", preferred);
++        SelfTestStep("T2-core0", "affinity_mask", static_cast<long long>(mask));
++        SelfTestStep("T2-core0", "cpu", svcGetCurrentProcessorNumber());
++        SelfTestRun("T2-core0");
++      });
++      return;
++    case 23: // T3
++      OnThread("T3-first", [] { SelfTestRun("T3-first"); });
++      OnThread("T3-second", [] { SelfTestRun("T3-second", "SHA256"); });
++      return;
++    case 24: // T4
++      SelfTestRun("T4-main");
++      return;
++    case 26: // T6: 4 threads, different digests, default library context
++      SelfTestStep("T6", "cpu-main", svcGetCurrentProcessorNumber());
++      ConcurrentRound("T6", false, nullptr);
++      return;
++    case 27: // T7: 4 threads, all MD5
++      SelfTestStep("T7", "cpu-main", svcGetCurrentProcessorNumber());
++      ConcurrentRound("T7", true, nullptr);
++      return;
++    case 28: // T8: T6 five times, each in a fresh library context (first construction every round)
++      for (int round = 0; round < 5; ++round)
++      {
++        char prefix[8];
++        std::snprintf(prefix, sizeof(prefix), "T8r%d", round);
++        SelfTestStep(prefix, "pre OSSL_LIB_CTX_new", 0);
++        OSSL_LIB_CTX* libctx = OSSL_LIB_CTX_new();
++        SelfTestStep(prefix, "OSSL_LIB_CTX_new", reinterpret_cast<long long>(libctx));
++        if (!libctx)
++          continue;
++        ConcurrentRound(prefix, false, libctx);
++        SelfTestStep(prefix, "pre OSSL_LIB_CTX_free", 0);
++        OSSL_LIB_CTX_free(libctx);
++        SelfTestStep(prefix, "OSSL_LIB_CTX_free done", 0);
++      }
++      SelfTestStep("T8", "all rounds done", 0);
++      return;
++    case 25: // T5
++    {
++      SelfTestStep("T5-main", "cpu", svcGetCurrentProcessorNumber());
++      SelfTestStep("T5-main", "pre OPENSSL_init_crypto", 0);
++      const int crc = OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, nullptr);
++      SelfTestStep("T5-main", "OPENSSL_init_crypto", crc);
++      SelfTestStep("T5-main", "pre OPENSSL_init_ssl", 0);
++      const int src = OPENSSL_init_ssl(0, nullptr);
++      SelfTestStep("T5-main", "OPENSSL_init_ssl", src);
++      OnThread("T5-thr1M", [] {
++        SelfTestStep("T5-thr1M", "cpu", svcGetCurrentProcessorNumber());
++        SelfTestRun("T5-thr1M");
++      });
++      return;
++    }
++    default:
++      break;
++  }
++  // Mode 1 / 2 (rev 20/21 behaviour).
++  if (mode != 2)
++    SelfTestRun("main");
++  OnThread("thr1M", [] { SelfTestRun("thr1M"); });
++  pthread_attr_t attr;
++  pthread_attr_init(&attr);
++  pthread_attr_setstacksize(&attr, 256 * 1024);
++  pthread_t th;
++  const int rc = pthread_create(&th, &attr, SelfTest256K, nullptr);
++  pthread_attr_destroy(&attr);
++  SelfTestStep("thr256K", "pthread_create", rc);
++  if (rc == 0)
++  {
++    pthread_join(th, nullptr);
++    SelfTestStep("thr256K", "joined", 0);
++  }
++}
++
++#endif // SWITCH2_DIAG
++
++// ----------------------------------------------------------------------------------------------
++// OpenSSL warm-up (rev 21, always on unless the self-test flag starts with "T"), on the main
++// thread before Kodi starts. rev 20 found that the first construction of an OpenSSL method from an
++// add-on thread kills the process, while methods first built on the main thread work from any
++// thread. So every algorithm of every operation class is fetched once here into the default
++// library context's method store:
++//  * names: <class>_do_all_provided(NULL, cb, &set) with <class>_get0_name() (the store loader:
++//    OSSL_STORE_LOADER_names_do_all, first name), de-duplicated;
++//  * then <class>_fetch(NULL, name, NULL) for each name and <class>_free() of the returned
++//    reference (the store keeps its own).
++// Then the main-thread DRBG (RAND_bytes), a TLS client SSL_CTX with the CA bundle and one SSL, and
++// EC P-256 and X25519 key generation. One boot.txt line per class:
++// "<ms> OSSL-WARM <class> n=<fetched> fail=<failed> names=<enumerated> ms=<duration>", and
++// "OSSL-WARM done ms=". Failures are logged, never fatal.
++// ----------------------------------------------------------------------------------------------
++#include <openssl/decoder.h>
++#include <openssl/encoder.h>
++#include <openssl/err.h>
++#include <openssl/kdf.h>
++#include <openssl/rand.h>
++#include <openssl/ssl.h>
++#include <openssl/store.h>
++
++#include <cstdio>
++#include <set>
++#include <string>
++
++namespace
++{
++unsigned long long NowMs()
++{
++  return armTicksToNs(armGetSystemTick()) / 1000000ULL;
++}
++
++void WarmLog(const char* cls, long ok, long fail, long names, unsigned long long ms)
++{
++  // Release build: only a class with failures gets a line; the diagnostics build logs every class.
++  if (!SWITCH2_DIAG && fail == 0)
++    return;
++  char line[200];
++  const int n = std::snprintf(line, sizeof(line), "%llu OSSL-WARM %s n=%ld fail=%ld names=%ld ms=%llu\n",
++                              NowMs(), cls, ok, fail, names, ms);
++  if (n > 0)
++    Switch2RawAppend("/switch/kodi/boot.txt", line,
++                     static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n) : sizeof(line) - 1);
++}
++
++using NameSet = std::set<std::string>;
++
++void AddName(const char* name, NameSet* set)
++{
++  if (name)
++    set->insert(name);
++}
++} // namespace
++
++#define S2_WARM(T, PFX) \
++  do \
++  { \
++    const unsigned long long t0 = NowMs(); \
++    NameSet names; \
++    PFX##_do_all_provided( \
++        nullptr, [](T* m, void* arg) { AddName(PFX##_get0_name(m), static_cast<NameSet*>(arg)); }, \
++        &names); \
++    long ok = 0, fail = 0; \
++    for (const auto& n : names) \
++    { \
++      T* m = PFX##_fetch(nullptr, n.c_str(), nullptr); \
++      if (m) \
++      { \
++        ++ok; \
++        PFX##_free(m); \
++      } \
++      else \
++        ++fail; \
++    } \
++    ERR_clear_error(); \
++    WarmLog(#PFX, ok, fail, static_cast<long>(names.size()), NowMs() - t0); \
++  } while (0)
++
++extern "C" void Switch2OsslWarmUp(void)
++{
++  const unsigned long long start = NowMs();
++#if SWITCH2_DIAG
++  Switch2BootLog("OSSL-WARM start", 0);
++#endif
++  try
++  {
++    S2_WARM(EVP_MD, EVP_MD);
++    S2_WARM(EVP_CIPHER, EVP_CIPHER);
++    S2_WARM(EVP_MAC, EVP_MAC);
++    S2_WARM(EVP_KDF, EVP_KDF);
++    S2_WARM(EVP_RAND, EVP_RAND);
++    S2_WARM(EVP_KEYMGMT, EVP_KEYMGMT);
++    S2_WARM(EVP_KEYEXCH, EVP_KEYEXCH);
++    S2_WARM(EVP_SIGNATURE, EVP_SIGNATURE);
++    S2_WARM(EVP_ASYM_CIPHER, EVP_ASYM_CIPHER);
++    S2_WARM(EVP_KEM, EVP_KEM);
++    S2_WARM(OSSL_ENCODER, OSSL_ENCODER);
++    S2_WARM(OSSL_DECODER, OSSL_DECODER);
++    {
++      const unsigned long long t0 = NowMs();
++      NameSet names;
++      OSSL_STORE_LOADER_do_all_provided(
++          nullptr,
++          [](OSSL_STORE_LOADER* l, void* arg) {
++            // First name only (names_do_all may report several aliases).
++            struct First
++            {
++              bool done;
++              NameSet* set;
++            } first{false, static_cast<NameSet*>(arg)};
++            OSSL_STORE_LOADER_names_do_all(
++                l,
++                [](const char* name, void* data) {
++                  auto* f = static_cast<First*>(data);
++                  if (!f->done)
++                  {
++                    AddName(name, f->set);
++                    f->done = true;
++                  }
++                },
++                &first);
++          },
++          &names);
++      long ok = 0, fail = 0;
++      for (const auto& n : names)
++      {
++        OSSL_STORE_LOADER* l = OSSL_STORE_LOADER_fetch(nullptr, n.c_str(), nullptr);
++        if (l)
++        {
++          ++ok;
++          OSSL_STORE_LOADER_free(l);
++        }
++        else
++          ++fail;
++      }
++      ERR_clear_error();
++      WarmLog("OSSL_STORE_LOADER", ok, fail, static_cast<long>(names.size()), NowMs() - t0);
++    }
++    {
++      const unsigned long long t0 = NowMs();
++      unsigned char buf[16];
++      const int rc = RAND_bytes(buf, sizeof(buf));
++      WarmLog("RAND_bytes", rc == 1, rc != 1, 1, NowMs() - t0);
++    }
++    {
++      const unsigned long long t0 = NowMs();
++      long ok = 0, fail = 0;
++      SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
++      (ctx ? ok : fail)++;
++      if (ctx)
++      {
++        (SSL_CTX_load_verify_locations(ctx, "/switch/kodi/system/certs/cacert.pem", nullptr) == 1
++             ? ok
++             : fail)++;
++        SSL* ssl = SSL_new(ctx);
++        (ssl ? ok : fail)++;
++        SSL_free(ssl);
++        SSL_CTX_free(ctx);
++      }
++      ERR_clear_error();
++      WarmLog("SSL_CTX+verify+SSL", ok, fail, 3, NowMs() - t0);
++    }
++    {
++      const unsigned long long t0 = NowMs();
++      long ok = 0, fail = 0;
++      EVP_PKEY* ec = EVP_PKEY_Q_keygen(nullptr, nullptr, "EC", "P-256");
++      (ec ? ok : fail)++;
++      EVP_PKEY_free(ec);
++      EVP_PKEY* x = EVP_PKEY_Q_keygen(nullptr, nullptr, "X25519");
++      (x ? ok : fail)++;
++      EVP_PKEY_free(x);
++      ERR_clear_error();
++      WarmLog("keygen(P-256,X25519)", ok, fail, 2, NowMs() - t0);
++    }
++  }
++  catch (...)
++  {
++    Switch2BootLog("OSSL-WARM exception", 0);
++  }
++  Switch2BootLog("OSSL-WARM done ms", static_cast<long long>(NowMs() - start));
++}
++
 diff --git a/xbmc/platform/switch2/PlatformSwitch2.cpp b/xbmc/platform/switch2/PlatformSwitch2.cpp
 new file mode 100644
 index 0000000..22a4375
@@ -1706,10 +3794,10 @@ index 0000000..6998774
 +};
 diff --git a/xbmc/platform/switch2/PosixCompat.cpp b/xbmc/platform/switch2/PosixCompat.cpp
 new file mode 100644
-index 0000000..cdea7ef
+index 0000000..fe3745c
 --- /dev/null
 +++ b/xbmc/platform/switch2/PosixCompat.cpp
-@@ -0,0 +1,482 @@
+@@ -0,0 +1,941 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -1724,15 +3812,96 @@ index 0000000..cdea7ef
 +// give a thread without attributes 128 KiB of stack; Kodi, FFmpeg and Mesa expect Linux-sized stacks.
 +#include <pthread.h>
 +
++#include <atomic>
++#include <cstdio>
++#include <cstdlib>
++
++#include <switch.h>
++
 +extern "C" int __real_pthread_create(pthread_t*, const pthread_attr_t*, void* (*)(void*), void*);
 +
-+extern "C" int __wrap_pthread_create(pthread_t* thread,
-+                                     const pthread_attr_t* attr,
-+                                     void* (*start)(void*),
-+                                     void* arg)
++#if SWITCH2_DIAG
++// Diagnostics build only (ENABLE_SWITCH2_DIAG): counters for the memory monitor (main.cpp), one
++// boot.txt line per created thread, and start/exit lines for CPython's threads.
++std::atomic<long> g_switch2ThreadsCreated{0};
++std::atomic<long> g_switch2PyThreadsLive{0};
++
++namespace
 +{
++// CPython creates its threads with an attribute whose stack size is THREAD_STACK_SIZE (0x200000,
++// deps/patches/python3/0004); nothing else in kodi.bin asks for exactly that. Those threads get a
++// trampoline that logs one boot.txt line when they start and when their start routine returns
++// (CPython 3.11 threads return from pythread_wrapper; nothing in kodi.bin calls pthread_exit).
++constexpr size_t kPyThreadStack = 0x200000;
++
++struct PyStart
++{
++  void* (*start)(void*);
++  void* arg;
++};
++
++void* PyThreadTrampoline(void* p)
++{
++  PyStart s = *static_cast<PyStart*>(p);
++  std::free(p);
++  u64 tid = 0;
++  svcGetThreadId(&tid, CUR_THREAD_HANDLE);
++  const long live = g_switch2PyThreadsLive.fetch_add(1) + 1;
++  Switch2BootLog("pythread-start tid", static_cast<long long>(tid));
++  Switch2BootLog("pythread-live", live);
++  void* rv = s.start(s.arg);
++  g_switch2PyThreadsLive.fetch_sub(1);
++  Switch2BootLog("pythread-exit tid", static_cast<long long>(tid));
++  return rv;
++}
++
++// "<ms> THREAD create rc=.. stack=<bytes> start=<off> lr=<off>" (offsets from the image base;
++// stack = the attribute's size, or the 1 MiB default applied here).
++void ThreadCreateLog(int rc, size_t stack, void* (*start)(void*), uintptr_t lr)
++{
++  const unsigned long long base = Switch2TextBase();
++  const uintptr_t s = reinterpret_cast<uintptr_t>(start);
++  char line[200];
++  const int n = snprintf(line, sizeof(line), "%llu THREAD create rc=%d stack=%zu start=0x%llx lr=0x%llx\n",
++                         static_cast<unsigned long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL),
++                         rc, stack, static_cast<unsigned long long>(s >= base ? s - base : s),
++                         static_cast<unsigned long long>(lr >= base ? lr - base : lr));
++  if (n > 0)
++    Switch2RawAppend("/switch/kodi/boot.txt", line,
++                     static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n) : sizeof(line) - 1);
++}
++} // namespace
++#endif // SWITCH2_DIAG
++
++namespace
++{
++int CreateThread(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg)
++{
++#if SWITCH2_DIAG
++  g_switch2ThreadsCreated.fetch_add(1, std::memory_order_relaxed);
++#endif
 +  if (attr)
++  {
++#if SWITCH2_DIAG
++    size_t stack = 0;
++    if (pthread_attr_getstacksize(attr, &stack) == 0 && stack == kPyThreadStack)
++    {
++      if (auto* p = static_cast<PyStart*>(std::malloc(sizeof(PyStart))))
++      {
++        p->start = start;
++        p->arg = arg;
++        const int rc = __real_pthread_create(thread, attr, PyThreadTrampoline, p);
++        if (rc != 0)
++        {
++          std::free(p);
++          Switch2BootLog("pythread-create-failed rc", rc);
++        }
++        return rc;
++      }
++    }
++#endif
 +    return __real_pthread_create(thread, attr, start, arg);
++  }
 +  pthread_attr_t big;
 +  pthread_attr_init(&big);
 +  pthread_attr_setstacksize(&big, 1u << 20);
@@ -1740,12 +3909,28 @@ index 0000000..cdea7ef
 +  pthread_attr_destroy(&big);
 +  return rc;
 +}
++} // namespace
++
++extern "C" int __wrap_pthread_create(pthread_t* thread,
++                                     const pthread_attr_t* attr,
++                                     void* (*start)(void*),
++                                     void* arg)
++{
++  const int rc = CreateThread(thread, attr, start, arg);
++#if SWITCH2_DIAG
++  size_t stack = 1u << 20;
++  if (attr)
++    pthread_attr_getstacksize(attr, &stack);
++  ThreadCreateLog(rc, stack, start, reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
++#endif
++  return rc;
++}
 +
 +// pthread_detach() wrapper (linked with -Wl,--wrap=pthread_detach, see Install.cmake).
 +// libounce links no __syscall_thread_detach, so pthread_detach() always returns ENOSYS and
 +// std::thread::detach() throws std::system_error; CThread's autodelete path detaches its own
-+// thread inside a noexcept destructor -> std::terminate (rev 8 crash ~30 s after the home screen).
-+// Here "detach" hands the thread to a reaper that joins it once it has exited,
++// thread inside a noexcept destructor -> std::terminate (rev 8 crash ~30 s after the home screen,
++// finding 1499). Here "detach" hands the thread to a reaper that joins it once it has exited,
 +// which is what frees its stack and handle on this platform.
 +#include <condition_variable>
 +#include <deque>
@@ -1784,8 +3969,13 @@ index 0000000..cdea7ef
 +  pthread_attr_destroy(&attr);
 +  g_reaperRunning = rc == 0;
 +  // Without a reaper, detached threads are never joined (their stacks and handles leak), but
-+  // detach still succeeds: failing it would bring back the std::terminate seen in rev 8.
++  // detach still succeeds: failing it would bring back the std::terminate of finding 1499.
++#if SWITCH2_DIAG
 +  Switch2BootLog(rc == 0 ? "reaper-started" : "reaper-pthread_create-failed", rc);
++#else
++  if (rc != 0)
++    Switch2BootLog("reaper-pthread_create-failed", rc);
++#endif
 +}
 +} // namespace
 +
@@ -1804,7 +3994,7 @@ index 0000000..cdea7ef
 +}
 +
 +// ----------------------------------------------------------------------------------------------
-+// fsdev (SD card) POSIX fixes. Measured on hardware (rev 4b-8 bring-up):
++// fsdev (SD card) POSIX fixes. Measured on hardware (findings 1496-1498):
 +//  * read() at or past end-of-file fails with EIO where POSIX returns 0 (sqlite maps EIO to
 +//    SQLITE_CORRUPT/IOERR);
 +//  * stat() of a file reopens it by path, and any second open of a file that is open for writing
@@ -1845,6 +4035,9 @@ index 0000000..cdea7ef
 +constexpr int kMaxTrackedFd = 1024;
 +constexpr uint32_t kTracked = 1u << 0;
 +constexpr uint32_t kReadable = 1u << 1;
++// open() access mode + 1 in bits 4-5 (0 = unknown), for fcntl(F_GETFL) on files.
++constexpr uint32_t kAccShift = 4;
++constexpr uint32_t kAccMask = 3u << kAccShift;
 +
 +struct FdInfo
 +{
@@ -1900,9 +4093,13 @@ index 0000000..cdea7ef
 +}
 +#endif
 +
-+// stat() answer for a path whose fsdev stat failed with EIO (file open for writing in this
-+// process): the entry type needs no open; a file's size and times come from our open fd when the
-+// registry has one (it has, for anything opened through open()/fopen()), else st_size stays 0.
++// stat() answer for a path whose fsdev stat failed with EIO because the file is open for writing in
++// this process (the measured cause: fsdev's stat reopens the file by path, and this FS refuses a
++// second open of a file open for writing). Answered only when that is the case: the entry exists
++// (fsFsGetEntryType, no open) and, for a file, our fd registry has it open (size and times then
++// come from that fd). A file that is not open in this process keeps its real EIO (rev 25: before,
++// any existing path with an EIO stat was reported as existing, size 0). Directories are answered
++// from the entry type alone.
 +bool StatFallback(struct _reent* r, const char* path, struct stat* st)
 +{
 +  FsFileSystem* fs;
@@ -1917,11 +4114,13 @@ index 0000000..cdea7ef
 +    st->st_mode = S_IFDIR | 0755;
 +    return true;
 +  }
-+  st->st_mode = S_IFREG | 0644;
 +  const int fd = FindOpenFd(PathHash(fs, fspath));
++  if (fd < 0)
++    return false; // not open here: a genuine EIO
++  st->st_mode = S_IFREG | 0644;
 +  struct stat fst;
 +  const int saved = r->_errno;
-+  if (fd >= 0 && _fstat_r(r, fd, &fst) == 0 && S_ISREG(fst.st_mode))
++  if (_fstat_r(r, fd, &fst) == 0 && S_ISREG(fst.st_mode))
 +  {
 +    *st = fst;
 +    st->st_mode |= 0644;
@@ -1950,7 +4149,8 @@ index 0000000..cdea7ef
 +    if (Translate(path, &fs, fspath))
 +    {
 +      g_fds[fd].hash.store(PathHash(fs, fspath), std::memory_order_relaxed);
-+      g_fds[fd].flags.store(kTracked | ((flags & O_ACCMODE) != O_WRONLY ? kReadable : 0),
++      g_fds[fd].flags.store(kTracked | ((flags & O_ACCMODE) != O_WRONLY ? kReadable : 0) |
++                                ((static_cast<uint32_t>(flags & O_ACCMODE) + 1) << kAccShift),
 +                            std::memory_order_release);
 +    }
 +    else
@@ -2038,6 +4238,343 @@ index 0000000..cdea7ef
 +  return ok ? 0 : rc;
 +}
 +
++// fcntl() wrapper (-Wl,--wrap=fcntl, see Install.cmake). libounce's fcntl() is the BSD-socket one:
++// it accepts only F_GETFL/F_SETFL, on socket fds, and returns 95 (EOPNOTSUPP as a value, not -1 with
++// errno) for every other command. CPython's _Py_dup (F_DUPFD_CLOEXEC) then took "95" as the new fd.
++// Socket fds (the newlib handle's devoptab is libounce's "soc", the test its own _socketGetFd makes)
++// keep the real F_GETFL/F_SETFL (O_NONBLOCK); every other command, on any fd, is answered here:
++//   F_DUPFD/F_DUPFD_CLOEXEC dup() until the new fd is >= arg (extras closed); F_GETFD -> FD_CLOEXEC
++//   (there is no exec); F_SETFD, F_SETLK, F_SETLKW -> 0 (one process, no other lock holder);
++//   F_GETLK -> l_type = F_UNLCK; F_GETFL on a file -> its open() access mode (O_RDWR if unknown);
++//   F_SETFL on a file -> 0; anything else -> -1/EINVAL.
++#include <cstdarg>
++#include <sys/iosupport.h>
++
++extern "C" int __real_fcntl(int fd, int cmd, ...);
++
++namespace
++{
++bool IsSocketFd(int fd)
++{
++  __handle* h = __get_handle(fd);
++  if (!h || h->device >= STD_MAX || !devoptab_list[h->device] || !devoptab_list[h->device]->name)
++    return false;
++  return std::strcmp(devoptab_list[h->device]->name, "soc") == 0;
++}
++
++int DupAtLeast(int fd, int minfd)
++{
++  if (minfd < 0)
++  {
++    errno = EINVAL;
++    return -1;
++  }
++  int extras[64];
++  int nextras = 0;
++  int nfd = dup(fd);
++  while (nfd >= 0 && nfd < minfd && nextras < 64)
++  {
++    extras[nextras++] = nfd;
++    nfd = dup(fd);
++  }
++  const int saved = errno;
++  for (int i = 0; i < nextras; ++i)
++    close(extras[i]);
++  if (nfd >= 0 && nfd < minfd)
++  {
++    close(nfd);
++    errno = EMFILE;
++    return -1;
++  }
++  if (nfd >= 0 && nfd < kMaxTrackedFd && fd >= 0 && fd < kMaxTrackedFd)
++  {
++    // The duplicate refers to the same file: same registry entry (read() bound, stat() fallback).
++    g_fds[nfd].hash.store(g_fds[fd].hash.load(std::memory_order_relaxed), std::memory_order_relaxed);
++    g_fds[nfd].flags.store(g_fds[fd].flags.load(std::memory_order_acquire), std::memory_order_release);
++  }
++  if (nfd < 0)
++    errno = saved;
++  return nfd;
++}
++} // namespace
++
++extern "C" int __wrap_fcntl(int fd, int cmd, ...)
++{
++  va_list ap;
++  va_start(ap, cmd);
++  int rc;
++  switch (cmd)
++  {
++    case F_GETFL:
++      if (IsSocketFd(fd))
++        rc = __real_fcntl(fd, F_GETFL);
++      else if (!__get_handle(fd))
++      {
++        errno = EBADF;
++        rc = -1;
++      }
++      else
++      {
++        const uint32_t f = fd >= 0 && fd < kMaxTrackedFd
++                               ? g_fds[fd].flags.load(std::memory_order_acquire)
++                               : 0;
++        rc = (f & kAccMask) ? static_cast<int>(((f & kAccMask) >> kAccShift) - 1) : O_RDWR;
++      }
++      break;
++    case F_SETFL:
++    {
++      const int flags = va_arg(ap, int);
++      if (IsSocketFd(fd))
++        rc = __real_fcntl(fd, F_SETFL, flags);
++      else if (__get_handle(fd))
++        rc = 0;
++      else
++      {
++        errno = EBADF;
++        rc = -1;
++      }
++      break;
++    }
++    case F_DUPFD:
++    case F_DUPFD_CLOEXEC:
++      rc = DupAtLeast(fd, va_arg(ap, int));
++      break;
++    case F_GETFD:
++      rc = __get_handle(fd) ? FD_CLOEXEC : -1;
++      if (rc == -1)
++        errno = EBADF;
++      break;
++    case F_SETFD:
++      (void)va_arg(ap, int);
++      rc = __get_handle(fd) ? 0 : -1;
++      if (rc == -1)
++        errno = EBADF;
++      break;
++    case F_GETLK:
++    {
++      struct flock* fl = va_arg(ap, struct flock*);
++      if (fl)
++        fl->l_type = F_UNLCK;
++      rc = 0;
++      break;
++    }
++    case F_SETLK:
++    case F_SETLKW:
++      (void)va_arg(ap, struct flock*);
++      rc = 0;
++      break;
++    default:
++      errno = EINVAL;
++      rc = -1;
++      break;
++  }
++  va_end(ap);
++  return rc;
++}
++
++#if SWITCH2_DIAG
++// TLS keys (-Wl,--wrap=pthread_key_create/pthread_key_delete/pthread_setspecific, Install.cmake).
++// libounce backs each key with a thread-TLS slot (threadTlsAlloc: 12 in all), so every create and
++// delete is logged to boot.txt with its result, and setspecific only when it fails:
++//   "<ms> KEY create rc=<rc> key=<k> dtor=<off> lr=<off>" (offsets from the image base).
++extern "C" int __real_pthread_key_create(pthread_key_t* key, void (*dtor)(void*));
++extern "C" int __real_pthread_key_delete(pthread_key_t key);
++extern "C" int __real_pthread_setspecific(pthread_key_t key, const void* value);
++
++namespace
++{
++void KeyLog(const char* what, int rc, long long key, uintptr_t dtor, uintptr_t lr)
++{
++  const unsigned long long base = Switch2TextBase();
++  char line[200];
++  const int n = snprintf(line, sizeof(line), "%llu KEY %s rc=%d key=%lld dtor=0x%llx lr=0x%llx\n",
++                         static_cast<unsigned long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL),
++                         what, rc, key,
++                         static_cast<unsigned long long>(dtor && dtor >= base ? dtor - base : dtor),
++                         static_cast<unsigned long long>(lr >= base ? lr - base : lr));
++  if (n > 0)
++    Switch2RawAppend("/switch/kodi/boot.txt", line,
++                     static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n) : sizeof(line) - 1);
++}
++} // namespace
++
++extern "C" int __wrap_pthread_key_create(pthread_key_t* key, void (*dtor)(void*))
++{
++  const int rc = __real_pthread_key_create(key, dtor);
++  KeyLog("create", rc, rc == 0 && key ? static_cast<long long>(*key) : -1,
++         reinterpret_cast<uintptr_t>(dtor), reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
++  return rc;
++}
++
++extern "C" int __wrap_pthread_key_delete(pthread_key_t key)
++{
++  const int rc = __real_pthread_key_delete(key);
++  KeyLog("delete", rc, static_cast<long long>(key), 0,
++         reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
++  return rc;
++}
++
++extern "C" int __wrap_pthread_setspecific(pthread_key_t key, const void* value)
++{
++  const int rc = __real_pthread_setspecific(key, value);
++  if (rc != 0)
++    KeyLog("setspecific-failed", rc, static_cast<long long>(key), 0,
++           reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
++  return rc;
++}
++
++#endif // SWITCH2_DIAG
++
++// socketpair() wrapper (-Wl,--wrap=socketpair, Install.cmake). libounce's socketpair() is a stub
++// (-1, ENOSYS): libmicrohttpd's inter-thread wake-up (MHD_itc_init_), CPython's socket.socketpair
++// (asyncio's self-pipe) and curl's multi-handle wake-up all need one. For AF_UNIX/AF_INET with
++// SOCK_STREAM or SOCK_DGRAM and protocol 0 the pair is emulated over loopback, the way Windows code
++// does it: TCP = a listener on 127.0.0.1:0, a blocking connect, accept of exactly that client
++// (peer address checked, anything else is refused), listener closed, TCP_NODELAY on both ends;
++// UDP = two sockets bound to 127.0.0.1:0 and connect()ed to each other. SOCK_NONBLOCK is applied
++// with fcntl(O_NONBLOCK) afterwards, SOCK_CLOEXEC is meaningless here (no exec). No shared state.
++// Anything else goes to the real stub (ENOSYS).
++#include <arpa/inet.h>
++#include <netinet/in.h>
++#include <netinet/tcp.h>
++#include <sys/socket.h>
++
++extern "C" int __real_socketpair(int domain, int type, int protocol, int* sv);
++
++namespace
++{
++void CloseKeepErrno(int fd)
++{
++  if (fd >= 0)
++  {
++    const int saved = errno;
++    close(fd);
++    errno = saved;
++  }
++}
++
++sockaddr_in Loopback(uint16_t port)
++{
++  sockaddr_in a;
++  std::memset(&a, 0, sizeof(a));
++  a.sin_len = sizeof(a);
++  a.sin_family = AF_INET;
++  a.sin_port = port;
++  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++  return a;
++}
++
++bool LocalAddr(int fd, sockaddr_in* out)
++{
++  socklen_t len = sizeof(*out);
++  return getsockname(fd, reinterpret_cast<sockaddr*>(out), &len) == 0 && out->sin_family == AF_INET;
++}
++
++int TcpPair(int sv[2])
++{
++  int lst = -1, cli = -1, srv = -1;
++  sockaddr_in a = Loopback(0), ca, peer;
++  lst = socket(AF_INET, SOCK_STREAM, 0);
++  if (lst < 0)
++    return -1;
++  if (bind(lst, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0 || listen(lst, 1) != 0 ||
++      !LocalAddr(lst, &a))
++    goto fail;
++  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++  cli = socket(AF_INET, SOCK_STREAM, 0);
++  if (cli < 0 || connect(cli, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0 || !LocalAddr(cli, &ca))
++    goto fail;
++  for (int tries = 0; tries < 8 && srv < 0; ++tries)
++  {
++    socklen_t plen = sizeof(peer);
++    const int s = accept(lst, reinterpret_cast<sockaddr*>(&peer), &plen);
++    if (s < 0)
++      goto fail;
++    if (peer.sin_family == AF_INET && peer.sin_port == ca.sin_port &&
++        peer.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
++      srv = s;
++    else
++      CloseKeepErrno(s); // not our client
++  }
++  if (srv < 0)
++  {
++    errno = ECONNREFUSED;
++    goto fail;
++  }
++  CloseKeepErrno(lst);
++  {
++    const int one = 1;
++    setsockopt(cli, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
++    setsockopt(srv, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
++  }
++  sv[0] = cli;
++  sv[1] = srv;
++  return 0;
++fail:
++  CloseKeepErrno(srv);
++  CloseKeepErrno(cli);
++  CloseKeepErrno(lst);
++  return -1;
++}
++
++int UdpPair(int sv[2])
++{
++  int s0 = socket(AF_INET, SOCK_DGRAM, 0);
++  int s1 = s0 >= 0 ? socket(AF_INET, SOCK_DGRAM, 0) : -1;
++  sockaddr_in a0 = Loopback(0), a1 = Loopback(0);
++  if (s1 < 0 || bind(s0, reinterpret_cast<sockaddr*>(&a0), sizeof(a0)) != 0 ||
++      bind(s1, reinterpret_cast<sockaddr*>(&a1), sizeof(a1)) != 0 || !LocalAddr(s0, &a0) ||
++      !LocalAddr(s1, &a1))
++    goto fail;
++  a0.sin_addr.s_addr = a1.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++  if (connect(s0, reinterpret_cast<sockaddr*>(&a1), sizeof(a1)) != 0 ||
++      connect(s1, reinterpret_cast<sockaddr*>(&a0), sizeof(a0)) != 0)
++    goto fail;
++  sv[0] = s0;
++  sv[1] = s1;
++  return 0;
++fail:
++  CloseKeepErrno(s1);
++  CloseKeepErrno(s0);
++  return -1;
++}
++} // namespace
++
++extern "C" int __wrap_socketpair(int domain, int type, int protocol, int* sv)
++{
++  const int extra = type & (SOCK_NONBLOCK | SOCK_CLOEXEC);
++  const int base = type & ~(SOCK_NONBLOCK | SOCK_CLOEXEC);
++  if (!sv || (domain != AF_UNIX && domain != AF_INET) || protocol != 0 ||
++      (base != SOCK_STREAM && base != SOCK_DGRAM))
++    return __real_socketpair(domain, type, protocol, sv);
++  if ((base == SOCK_STREAM ? TcpPair(sv) : UdpPair(sv)) != 0)
++    return -1;
++  if (extra & SOCK_NONBLOCK)
++  {
++    for (int i = 0; i < 2; ++i)
++    {
++      const int fl = fcntl(sv[i], F_GETFL, 0);
++      if (fl < 0 || fcntl(sv[i], F_SETFL, fl | O_NONBLOCK) != 0)
++      {
++        CloseKeepErrno(sv[0]);
++        CloseKeepErrno(sv[1]);
++        return -1;
++      }
++    }
++  }
++  return 0;
++}
++
++// sha256CalculateHash wrapper (-Wl,--wrap=sha256CalculateHash): libounce's _sha256ProcessBlocks uses
++// the ARMv8 SHA2 instructions unconditionally; curl's Curl_libnx_sha256sum is the only caller in
++// kodi.bin. OpenSSL's SHA256() takes the code path its armcap allows (NEON only in this port).
++extern "C" unsigned char* SHA256(const unsigned char* d, size_t n, unsigned char* md);
++
++extern "C" void __wrap_sha256CalculateHash(void* dst, const void* src, size_t size)
++{
++  SHA256(static_cast<const unsigned char*>(src), size, static_cast<unsigned char*>(dst));
++}
++
 +// clock_gettime() wrapper (-Wl,--wrap=clock_gettime, see Install.cmake). libounce's
 +// __syscall_clock_gettime accepts only CLOCK_REALTIME (1) and CLOCK_MONOTONIC (4); every other id
 +// returns EINVAL without touching the timespec, and callers that ignore the return value (Kodi's
@@ -2067,7 +4604,17 @@ index 0000000..cdea7ef
 +    default:
 +      break;
 +  }
-+  return __real_clock_gettime(id, ts);
++  const int rc = __real_clock_gettime(id, ts);
++  // A failed CLOCK_MONOTONIC read falls back to the CPU tick counter (also monotonic, from boot), so
++  // callers that ignore the return value never see an untouched timespec (rev 25).
++  if (rc != 0 && id == CLOCK_MONOTONIC && ts)
++  {
++    const u64 ns = armTicksToNs(armGetSystemTick());
++    ts->tv_sec = static_cast<time_t>(ns / 1000000000ULL);
++    ts->tv_nsec = static_cast<long>(ns % 1000000000ULL);
++    return 0;
++  }
++  return rc;
 +}
 +
 +// Implementations behind the Switch 2 compat headers (compat/sys/sysinfo.h, compat/sys/utsname.h).
@@ -2194,10 +4741,10 @@ index 0000000..cdea7ef
 +}
 diff --git a/xbmc/platform/switch2/PosixCompat.h b/xbmc/platform/switch2/PosixCompat.h
 new file mode 100644
-index 0000000..238261d
+index 0000000..73736a3
 --- /dev/null
 +++ b/xbmc/platform/switch2/PosixCompat.h
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,85 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -2207,6 +4754,12 @@ index 0000000..238261d
 + */
 +
 +#pragma once
++
++// Diagnostics build (cmake -DENABLE_SWITCH2_DIAG=ON): OpenSSL trace wrappers and crumbs, memory
++// monitor, per-thread/TLS-key logging, OpenSSL self-test. Off in the release build.
++#ifndef SWITCH2_DIAG
++#define SWITCH2_DIAG 0
++#endif
 +
 +// Switch 2 file-system helpers implemented in PosixCompat.cpp / CrashHandler.cpp.
 +
@@ -2226,18 +4779,63 @@ index 0000000..238261d
 +// One raw "<ms> <what> <value>" line appended to sdmc:/switch/kodi/boot.txt.
 +void Switch2BootLog(const char* what, long long value);
 +
++// "<ms> " + printf-formatted text + "\n" appended to boot.txt (diagnostic log points).
++void Switch2DiagLog(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
++
 +// Arms std::set_terminate and resolves what the native exception handler needs (CrashHandler.cpp).
 +void Switch2InstallCrashHandlers(void);
++
++// Load address of kodi.bin's image (subtract from a code address to symbolise it).
++unsigned long long Switch2TextBase(void);
++
++// Reads sdmc:/switch/kodi/trace-ossl.flag once (OsslTrace.cpp); call from main.
++void Switch2OsslTraceInit(void);
++
++// MD5 self-test on the main thread, a 1 MiB and a 256 KiB thread, only with
++// sdmc:/switch/kodi/ossl-selftest.flag (OsslTrace.cpp); call from main before Kodi starts.
++void Switch2OsslSelfTest(int mode);
++// 0 = no sdmc:/switch/kodi/ossl-selftest.flag, 1 = flag, 2 = flag content starts with "T"
++// (thread-first: no warm-up, no main-thread self-test run), 21..24 = "T1".."T4" experiments
++// (OsslTrace.cpp; all without the warm-up).
++int Switch2OsslSelfTestMode(void);
++// Fetches every provided OpenSSL algorithm of every class on the main thread (OsslTrace.cpp).
++void Switch2OsslWarmUp(void);
 +
 +#ifdef __cplusplus
 +}
 +#endif
++
++#if defined(__cplusplus) && SWITCH2_DIAG
++#include <atomic>
++// Thread counters kept by the pthread_create wrapper (PosixCompat.cpp), read by the memory monitor.
++extern std::atomic<long> g_switch2ThreadsCreated;
++extern std::atomic<long> g_switch2PyThreadsLive;
++#endif
++
++// Capped diagnostic log point for shared Kodi sources (SWITCH2_DIAG builds only): each expansion
++// site logs its first 40 hits; arguments are not evaluated otherwise or in release builds.
++#if defined(__cplusplus) && SWITCH2_DIAG
++#include <atomic>
++#define SWITCH2_DIAG_LOG(...) \
++  do \
++  { \
++    static std::atomic<int> s2DiagHits{0}; \
++    if (s2DiagHits.fetch_add(1, std::memory_order_relaxed) < 40) \
++      Switch2DiagLog(__VA_ARGS__); \
++  } while (0)
++#else
++#define SWITCH2_DIAG_LOG(...) \
++  do \
++  { \
++  } while (0)
++#endif
++
 diff --git a/xbmc/platform/switch2/StartupProbe.cpp b/xbmc/platform/switch2/StartupProbe.cpp
 new file mode 100644
-index 0000000..c5f794d
+index 0000000..23875ea
 --- /dev/null
 +++ b/xbmc/platform/switch2/StartupProbe.cpp
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,243 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -2247,8 +4845,8 @@ index 0000000..c5f794d
 + */
 +
 +// Switch 2 sqlite set-up, run before Kodi: shared-cache mode (this FS refuses a second open of a
-+// file that is open for writing), and sqlite's own error log to sdmc:/switch/kodi/sqlite.log
-+// (capped; LOCKED/BUSY, which Kodi's wrapper retries, are not logged). One summary line goes to
++// file that is open for writing), and (diagnostics build only) sqlite's own error log to
++// sdmc:/switch/kodi/sqlite.log (capped; LOCKED/BUSY, which Kodi's wrapper retries, are not logged). One summary line goes to
 +// sdmc:/switch/kodi/boot.txt. Build with -DSWITCH2_STARTUP_PROBE=1 for the rev 4-9 bring-up probe
 +// of the FS and sqlite (touches only sdmc:/switch/kodi/probe*.bin|db, removed again).
 +
@@ -2297,8 +4895,11 @@ index 0000000..c5f794d
 +}
 +
 +constexpr const char* BOOT = "/switch/kodi/boot.txt";
++#if SWITCH2_DIAG
 +constexpr const char* SQLLOG = "/switch/kodi/sqlite.log";
++#endif
 +
++#if SWITCH2_DIAG
 +std::atomic<int> g_sqliteLogLines{0};
 +
 +void SqliteLog(void*, int code, const char* msg)
@@ -2311,6 +4912,7 @@ index 0000000..c5f794d
 +    return;
 +  Line(SQLLOG, "sqlite rc=%d %s", code, msg ? msg : "");
 +}
++#endif // SWITCH2_DIAG
 +
 +#if SWITCH2_STARTUP_PROBE
 +
@@ -2460,7 +5062,12 @@ index 0000000..c5f794d
 +void Switch2StartupProbe()
 +{
 +  // Must run before any other sqlite call (sqlite3_config is only valid before initialisation).
++  // sqlite's error log to sqlite.log: diagnostics build only (rev 25); -1 = not installed.
++#if SWITCH2_DIAG
 +  const int logRc = sqlite3_config(SQLITE_CONFIG_LOG, SqliteLog, nullptr);
++#else
++  const int logRc = -1;
++#endif
 +  // This FS refuses a second open of a file that is open for writing (rev 7 flight: Kodi's second
 +  // connection to Addons33.db got SQLITE_CANTOPEN). Shared-cache mode makes all connections to one
 +  // database file in this process share a single pager and file handle.
@@ -2486,6 +5093,163 @@ index 0000000..53d2fc6
 +
 +// Switch 2 bring-up instrument: raw file-I/O and sqlite self-test before Kodi starts.
 +void Switch2StartupProbe();
+diff --git a/xbmc/platform/switch2/StaticAddons.cpp b/xbmc/platform/switch2/StaticAddons.cpp
+new file mode 100644
+index 0000000..430e8ac
+--- /dev/null
++++ b/xbmc/platform/switch2/StaticAddons.cpp
+@@ -0,0 +1,95 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "StaticAddons.h"
++
++#include <cstring>
++
++// Kodi 21 resolves exactly these entry points from a binary add-on
++// (xbmc/addons/binary-addons/DllAddon.h): ADDON_Create and ADDON_GetTypeVersion (required),
++// ADDON_GetTypeMinVersion (optional). Every add-on built with kodi-dev-kit's ADDONCREATOR defines all three.
++//
++// To add an add-on:
++//   1. pack it like homebrew/kodi/isa/build.sh does, with its own prefix (pfx_ADDON_Create, ...),
++//   2. add KODI_STATIC_ADDON_DECLARE(pfx) and a table row KODI_STATIC_ADDON_ROW("<library>", pfx)
++//      guarded by its own KODI_STATIC_ADDON_<ID> define,
++//   3. ship its data folder with addon.xml library="<library>" and a placeholder file of that name
++//      (CAddonDll::GetDllPath requires the file to exist).
++
++#define KODI_STATIC_ADDON_DECLARE(pfx) \
++  extern "C" int pfx##_ADDON_Create(void* addonInterface); \
++  extern "C" const char* pfx##_ADDON_GetTypeVersion(int type); \
++  extern "C" const char* pfx##_ADDON_GetTypeMinVersion(int type); \
++  static const KodiStaticAddonSymbol pfx##_symbols[] = { \
++      {"ADDON_Create", reinterpret_cast<void*>(&pfx##_ADDON_Create)}, \
++      {"ADDON_GetTypeVersion", reinterpret_cast<void*>(&pfx##_ADDON_GetTypeVersion)}, \
++      {"ADDON_GetTypeMinVersion", reinterpret_cast<void*>(&pfx##_ADDON_GetTypeMinVersion)}, \
++      {nullptr, nullptr}};
++
++#define KODI_STATIC_ADDON_ROW(library, pfx) {library, pfx##_symbols},
++
++#if defined(KODI_STATIC_ADDON_INPUTSTREAM_ADAPTIVE)
++KODI_STATIC_ADDON_DECLARE(isa)
++#endif
++
++namespace
++{
++const KodiStaticAddon kAddons[] = {
++#if defined(KODI_STATIC_ADDON_INPUTSTREAM_ADAPTIVE)
++    KODI_STATIC_ADDON_ROW("inputstream.adaptive.so", isa)
++#endif
++    {nullptr, nullptr}};
++
++constexpr size_t kAddonCount = sizeof(kAddons) / sizeof(kAddons[0]) - 1;
++
++const char* BaseName(const char* path)
++{
++  const char* base = path;
++  for (const char* p = path; *p; ++p)
++  {
++    if (*p == '/' || *p == '\\')
++      base = p + 1;
++  }
++  return base;
++}
++} // namespace
++
++extern "C" const KodiStaticAddon* kodi_static_addon_find(const char* path)
++{
++  if (!path)
++    return nullptr;
++  const char* base = BaseName(path);
++  for (size_t i = 0; i < kAddonCount; ++i)
++  {
++    if (std::strcmp(kAddons[i].library, base) == 0)
++      return &kAddons[i];
++  }
++  return nullptr;
++}
++
++extern "C" int kodi_static_addon_is_handle(const void* handle)
++{
++  for (size_t i = 0; i < kAddonCount; ++i)
++  {
++    if (handle == &kAddons[i])
++      return 1;
++  }
++  return 0;
++}
++
++extern "C" void* kodi_static_addon_symbol(const KodiStaticAddon* addon, const char* name)
++{
++  if (!addon || !name)
++    return nullptr;
++  for (const KodiStaticAddonSymbol* s = addon->symbols; s->name; ++s)
++  {
++    if (std::strcmp(s->name, name) == 0)
++      return s->address;
++  }
++  return nullptr;
++}
+diff --git a/xbmc/platform/switch2/StaticAddons.h b/xbmc/platform/switch2/StaticAddons.h
+new file mode 100644
+index 0000000..266ee05
+--- /dev/null
++++ b/xbmc/platform/switch2/StaticAddons.h
+@@ -0,0 +1,50 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++// Static binary add-on registry for Switch 2, which has no dynamic loader.
++//
++// A binary add-on (e.g. inputstream.adaptive) is linked into kodi.bin as one prelinked object whose
++// only global symbols are its C entry points, renamed with a per-add-on prefix
++// (ADDON_Create -> isa_ADDON_Create, ...; see homebrew/kodi/isa/build.sh "pack").
++// DlStubs.cpp's dlopen() asks this registry for the library file name Kodi computed from the add-on's
++// addon.xml (CAddonDll::LibPath, e.g. ".../addons/inputstream.adaptive/inputstream.adaptive.so")
++// and gets a pseudo-handle; dlsym() on that handle returns the renamed entry point.
++//
++// The functions are extern "C" so DlStubs.cpp can reference them weakly: a kodi.bin linked without
++// StaticAddons.cpp behaves exactly as before (every dlopen fails).
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++struct KodiStaticAddonSymbol
++{
++  const char* name; // symbol name Kodi passes to dlsym(), e.g. "ADDON_Create"
++  void* address; // the add-on's renamed definition, e.g. &isa_ADDON_Create
++};
++
++struct KodiStaticAddon
++{
++  const char* library; // library file name as written in addon.xml (library="...")
++  const struct KodiStaticAddonSymbol* symbols; // terminated by a {nullptr, nullptr} entry
++};
++
++// The registry entry whose library file name equals the last path component of `path`, or nullptr.
++const struct KodiStaticAddon* kodi_static_addon_find(const char* path);
++
++// Non-zero when `handle` is a pointer returned by kodi_static_addon_find().
++int kodi_static_addon_is_handle(const void* handle);
++
++// The address registered for `name` in `addon`, or nullptr.
++void* kodi_static_addon_symbol(const struct KodiStaticAddon* addon, const char* name);
++
++#ifdef __cplusplus
++}
++#endif
 diff --git a/xbmc/platform/switch2/SystemInfoSwitch2.cpp b/xbmc/platform/switch2/SystemInfoSwitch2.cpp
 new file mode 100644
 index 0000000..ac70426
@@ -2810,10 +5574,10 @@ index 0000000..2267c57
 +#define B2N_64(x) x = __builtin_bswap64(x)
 diff --git a/xbmc/platform/switch2/main.cpp b/xbmc/platform/switch2/main.cpp
 new file mode 100644
-index 0000000..88f73de
+index 0000000..4035e1c
 --- /dev/null
 +++ b/xbmc/platform/switch2/main.cpp
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,210 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -2831,11 +5595,14 @@ index 0000000..88f73de
 +#include "platform/switch2/PosixCompat.h"
 +#include "platform/switch2/StartupProbe.h"
 +
++#include <atomic>
 +#include <cstdio>
 +#include <cstdlib>
 +#include <cstring>
 +#include <dirent.h>
++#include <malloc.h>
 +#include <string>
++#include <thread>
 +#include <locale.h>
 +#include <sys/stat.h>
 +#include <unistd.h>
@@ -2857,6 +5624,12 @@ index 0000000..88f73de
 +  appletLockExit();
 +  // Every exit path (incl. exit() deep inside Kodi) must unlock before the process ends (applet.h).
 +  atexit([] { appletUnlockExit(); });
++  // Registered after the unlock, so it runs first: an exit() that skips CApplication::Stop while
++  // video plays must not leave the console's dimming/auto-sleep held off (OSScreenSaverSwitch2).
++  atexit([] {
++    if (appletGetAppletType() != AppletType_None)
++      appletSetMediaPlaybackState(false);
++  });
 +
 +  SocketInitConfig sockCfg = *socketGetDefaultInitConfig();
 +  sockCfg.tcp_tx_buf_size = 0x40000;
@@ -2864,11 +5637,79 @@ index 0000000..88f73de
 +  sockCfg.tcp_tx_buf_max_size = 0x100000;
 +  sockCfg.tcp_rx_buf_max_size = 0x200000;
 +  sockCfg.sb_efficiency = 8;
-+  socketInitialize(&sockCfg);
++  // Every thread blocked in poll/recv/accept holds one bsd:u session until it returns (curl multi
++  // loops, libmicrohttpd, CPython/asyncio, Kodi's receivers): libounce's default of 3 stalls the
++  // rest. 8 of the 16 a session manager allows; the transfer memory does not depend on it.
++  sockCfg.num_bsd_sessions = 8;
++  Result rc = socketInitialize(&sockCfg);
++  Switch2BootLog("socket-init rc", static_cast<long long>(rc));
++  Switch2BootLog("socket-init sessions", static_cast<long long>(sockCfg.num_bsd_sessions));
++  if (R_FAILED(rc))
++  {
++    // Fall back to libounce's default session count.
++    sockCfg.num_bsd_sessions = 3;
++    rc = socketInitialize(&sockCfg);
++    Switch2BootLog("socket-init retry rc", static_cast<long long>(rc));
++    Switch2BootLog("socket-init retry sessions", static_cast<long long>(sockCfg.num_bsd_sessions));
++  }
 +
-+  // Mirror stdout/stderr to nxlink when hbmenu's NetLoader started us.
-+  nxlinkStdio();
++  // Mirror stdout to nxlink when hbmenu's NetLoader started us.
++  const int nxlink = nxlinkStdio();
++  // stderr goes to the SD card instead (one file per launch): CPython's fatal_error() writes
++  // "Fatal Python error: ..." and its traceback dump to fileno(stderr), and PyErr_Print/
++  // faulthandler write there too. Unbuffered, so a line is on the SD before the next call.
++  FILE* err = freopen("sdmc:/switch/kodi/stderr.txt", "w", stderr);
++  if (err)
++    setvbuf(stderr, nullptr, _IONBF, 0);
++#if SWITCH2_DIAG
++  Switch2BootLog("stderr-to-sd", err ? fileno(stderr) : -1);
++  Switch2BootLog("nxlink-stdio", nxlink);
++#else
++  (void)nxlink;
++#endif
 +}
++
++#if SWITCH2_DIAG
++// Once a second for 10 minutes, one boot.txt line: "<ms> mem used=.. total=.. arena=.. inuse=..
++// free=.. threads=<created so far> pythreads=<running>". svcGetInfo for the process, mallinfo() of
++// libounce's allocator; thread counts from PosixCompat.cpp's pthread_create wrapper. Never fatal:
++// a failed query logs 0, a failed write is dropped.
++void StartMemoryMonitor()
++{
++  try
++  {
++    std::thread([] {
++      for (int i = 0; i < 600; ++i)
++      {
++        svcSleepThread(1000000000LL);
++        u64 used = 0, total = 0;
++        svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
++        svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
++        const struct mallinfo mi = mallinfo();
++        char line[256];
++        const int n = snprintf(
++            line, sizeof(line),
++            "%llu mem used=%llu total=%llu arena=%llu inuse=%llu free=%llu threads=%ld pythreads=%ld\n",
++            static_cast<unsigned long long>(armTicksToNs(armGetSystemTick()) / 1000000ULL),
++            static_cast<unsigned long long>(used), static_cast<unsigned long long>(total),
++            static_cast<unsigned long long>(mi.arena), static_cast<unsigned long long>(mi.uordblks),
++            static_cast<unsigned long long>(mi.fordblks), g_switch2ThreadsCreated.load(),
++            g_switch2PyThreadsLive.load());
++        if (n > 0)
++          Switch2RawAppend("/switch/kodi/boot.txt", line,
++                           static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n)
++                                                                 : sizeof(line) - 1);
++      }
++    }).detach();
++    Switch2BootLog("mem-monitor-started", 0);
++  }
++  catch (...)
++  {
++    Switch2BootLog("mem-monitor-failed", 0);
++  }
++}
++
++#endif // SWITCH2_DIAG
 +
 +void TearDownServices()
 +{
@@ -2915,6 +5756,23 @@ index 0000000..88f73de
 +  setenv("KODI_BIN_HOME", KODI_HOME, 1);
 +  setlocale(LC_NUMERIC, "C");
 +  BootMark("main-entered");
++#if SWITCH2_DIAG
++  Switch2OsslTraceInit();
++  {
++    const int selftest = Switch2OsslSelfTestMode();
++    // Build every OpenSSL method on the main thread before any add-on thread can be first
++    // (OsslTrace.cpp); skipped only for the thread-first self-test.
++    if (selftest < 2) // the "T" modes (2, 21-24) must make the first fetch themselves
++      Switch2OsslWarmUp();
++    Switch2OsslSelfTest(selftest);
++  }
++  StartMemoryMonitor();
++#else
++  // Build every OpenSSL method on the main thread before any add-on thread can be the first to
++  // construct one: a first construction from an add-on thread killed the process (rev 20/21,
++  // findings 1515/1516). OsslTrace.cpp.
++  Switch2OsslWarmUp();
++#endif
 +  ClearStaleDbLocks();
 +  Switch2StartupProbe();
 +
@@ -3189,6 +6047,31 @@ index 0000000..1b3ebaf
 +  std::vector<std::string> GetDiskUsage() override;
 +  bool PumpDriveChangeEvents(IStorageEventsCallback* callback) override { return false; }
 +};
+diff --git a/xbmc/utils/GLUtils.cpp b/xbmc/utils/GLUtils.cpp
+index 6bd1ea4..ae7d19b 100644
+--- a/xbmc/utils/GLUtils.cpp
++++ b/xbmc/utils/GLUtils.cpp
+@@ -268,14 +268,16 @@ int KODI::UTILS::GL::glFormatElementByteCount(GLenum format)
+ #ifdef HAS_GL
+   case GL_BGRA:
+     return 4;
+-  case GL_RED:
+-    return 1;
+   case GL_GREEN:
+     return 1;
+-  case GL_RG:
+-    return 2;
+   case GL_BGR:
+     return 3;
++#endif
++#if defined(HAS_GL) || HAS_GLES >= 3
++  case GL_RED:
++    return 1;
++  case GL_RG:
++    return 2;
+ #endif
+   case GL_RGBA:
+     return 4;
 diff --git a/xbmc/utils/TimeUtils.cpp b/xbmc/utils/TimeUtils.cpp
 index 95c5069..89d284c 100644
 --- a/xbmc/utils/TimeUtils.cpp
@@ -3206,20 +6089,122 @@ index 95c5069..89d284c 100644
    clock_gettime(CLOCK_MONOTONIC, &now);
 diff --git a/xbmc/windowing/switch2/CMakeLists.txt b/xbmc/windowing/switch2/CMakeLists.txt
 new file mode 100644
-index 0000000..ce95015
+index 0000000..3539118
 --- /dev/null
 +++ b/xbmc/windowing/switch2/CMakeLists.txt
-@@ -0,0 +1,4 @@
-+set(SOURCES WinSystemSwitch2GLESContext.cpp)
-+set(HEADERS WinSystemSwitch2GLESContext.h)
+@@ -0,0 +1,6 @@
++set(SOURCES WinSystemSwitch2GLESContext.cpp
++            OSScreenSaverSwitch2.cpp)
++set(HEADERS WinSystemSwitch2GLESContext.h
++            OSScreenSaverSwitch2.h)
 +
 +core_add_library(windowing_switch2)
+diff --git a/xbmc/windowing/switch2/OSScreenSaverSwitch2.cpp b/xbmc/windowing/switch2/OSScreenSaverSwitch2.cpp
+new file mode 100644
+index 0000000..d682cd3
+--- /dev/null
++++ b/xbmc/windowing/switch2/OSScreenSaverSwitch2.cpp
+@@ -0,0 +1,51 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#include "OSScreenSaverSwitch2.h"
++
++#include "platform/switch2/PosixCompat.h"
++#include "utils/log.h"
++
++#include <atomic>
++
++#include <switch.h>
++
++using namespace KODI::WINDOWING::SWITCH2;
++
++namespace
++{
++std::atomic<bool> g_loggedOnce{false};
++
++void SetMediaPlayback(bool state)
++{
++  const Result rc = appletSetMediaPlaybackState(state);
++  // One boot.txt line for the first call (the result of the first inhibit); kodi.log gets failures.
++  if (!g_loggedOnce.exchange(true))
++    Switch2BootLog(state ? "media-playback-state on rc" : "media-playback-state off rc",
++                   static_cast<long long>(rc));
++  if (R_FAILED(rc))
++    CLog::Log(LOGWARNING, "COSScreenSaverSwitch2: appletSetMediaPlaybackState({}) failed: 0x{:x}",
++              state, rc);
++}
++} // namespace
++
++void COSScreenSaverSwitch2::Inhibit()
++{
++  if (m_inhibited)
++    return;
++  SetMediaPlayback(true);
++  m_inhibited = true;
++}
++
++void COSScreenSaverSwitch2::Uninhibit()
++{
++  if (!m_inhibited)
++    return;
++  SetMediaPlayback(false);
++  m_inhibited = false;
++}
+diff --git a/xbmc/windowing/switch2/OSScreenSaverSwitch2.h b/xbmc/windowing/switch2/OSScreenSaverSwitch2.h
+new file mode 100644
+index 0000000..58f960e
+--- /dev/null
++++ b/xbmc/windowing/switch2/OSScreenSaverSwitch2.h
+@@ -0,0 +1,37 @@
++/*
++ *  Copyright (C) 2026 Team Kodi
++ *  This file is part of Kodi - https://kodi.tv
++ *
++ *  SPDX-License-Identifier: GPL-2.0-or-later
++ *  See LICENSES/README.md for more information.
++ */
++
++#pragma once
++
++#include "windowing/OSScreenSaver.h"
++
++namespace KODI
++{
++namespace WINDOWING
++{
++namespace SWITCH2
++{
++
++// The console's idle dimming and auto-sleep, held off while Kodi inhibits the OS screen saver
++// (video playback etc., COSScreenSaverManager): appletSetMediaPlaybackState(true/false). That is a
++// per-process applet state (SetMediaPlaybackStateForApplication for an Application): the applet
++// manager drops it when the process ends, and nothing is written to system settings. Not
++// appletSetAutoSleepDisabled or the idle-time extensions.
++class COSScreenSaverSwitch2 : public IOSScreenSaver
++{
++public:
++  void Inhibit() override;
++  void Uninhibit() override;
++
++private:
++  bool m_inhibited = false;
++};
++
++} // namespace SWITCH2
++} // namespace WINDOWING
++} // namespace KODI
 diff --git a/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.cpp b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.cpp
 new file mode 100644
-index 0000000..e20e5b5
+index 0000000..c375124
 --- /dev/null
 +++ b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.cpp
-@@ -0,0 +1,342 @@
+@@ -0,0 +1,469 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -3229,12 +6214,15 @@ index 0000000..e20e5b5
 + */
 +
 +#include "WinSystemSwitch2GLESContext.h"
++#include "OSScreenSaverSwitch2.h"
++#include "platform/switch2/PosixCompat.h"
 +
 +#include "ServiceBroker.h"
 +#include "application/AppInboundProtocol.h"
 +#include "cores/RetroPlayer/process/RPProcessInfo.h"
 +#include "cores/RetroPlayer/rendering/VideoRenderers/RPRendererOpenGLES.h"
 +#include "cores/VideoPlayer/DVDCodecs/DVDFactoryCodec.h"
++#include "cores/VideoPlayer/Process/ProcessInfo.h"
 +#include "cores/VideoPlayer/VideoRenderers/LinuxRendererGLES.h"
 +#include "cores/VideoPlayer/VideoRenderers/RenderFactory.h"
 +#include "rendering/gles/ScreenshotSurfaceGLES.h"
@@ -3299,6 +6287,18 @@ index 0000000..e20e5b5
 +  }
 +};
 +
++// VideoPlayer: the default CProcessInfo offers the decoder only YUV420P, so FFmpeg software decode
++// of 10-bit video went through an 8-bit swscale pass. Offer what the GLES renderer uploads directly.
++class CProcessInfoSwitch2 : public CProcessInfo
++{
++public:
++  static CProcessInfo* Create() { return new CProcessInfoSwitch2(); }
++  std::vector<AVPixelFormat> GetRenderFormats() override
++  {
++    return CLinuxRendererGLES::GetSupportedFormats();
++  }
++};
++
 +bool SendEvent(XBMC_Event& event)
 +{
 +  std::shared_ptr<CAppInboundProtocol> appPort = CServiceBroker::GetAppPort();
@@ -3327,10 +6327,11 @@ index 0000000..e20e5b5
 +{
 +  // Per-windowing registrations, as in the gbm/X11 GLES contexts: without a video renderer,
 +  // VideoPlayer loops on "OutputPicture - failed to configure renderer" (rev 10 flight).
-+  // VideoPlayer keeps the default CProcessInfo; decoding is FFmpeg software (no HW accels).
++  // Decoding is FFmpeg software (no HW accels).
 +  VIDEOPLAYER::CRendererFactory::ClearRenderer();
 +  CDVDFactoryCodec::ClearHWAccels();
 +  CLinuxRendererGLES::Register();
++  CProcessInfo::RegisterProcessControl("switch2", CProcessInfoSwitch2::Create);
 +  KODI::RETRO::CRPProcessInfo::RegisterProcessControl(CRPProcessInfoSwitch2::Create);
 +  KODI::RETRO::CRPProcessInfo::RegisterRendererFactory(new KODI::RETRO::CRendererFactoryOpenGLES);
 +  CScreenshotSurfaceGLES::Register();
@@ -3345,13 +6346,12 @@ index 0000000..e20e5b5
 +
 +  m_window = nwindowGetDefault();
 +
-+  s32 w = 0, h = 0;
-+  if (R_SUCCEEDED(appletGetDefaultDisplayResolution(&w, &h)) && w > 0 && h > 0)
-+  {
-+    m_displayWidth = std::min<s32>(w, 1920);
-+    m_displayHeight = std::min<s32>(h, 1080);
-+  }
-+  CLog::Log(LOGINFO, "Switch2: display {}x{}", m_displayWidth, m_displayHeight);
++  m_operationMode = static_cast<int>(appletGetOperationMode());
++  QueryDisplaySize(m_screenWidth, m_screenHeight, m_displayWidth, m_displayHeight);
++  CLog::Log(LOGINFO, "Switch2: display mode={} output {}x{} window {}x{}", m_operationMode,
++            m_screenWidth, m_screenHeight, m_displayWidth, m_displayHeight);
++  Switch2DiagLog("display mode=%d window=%dx%d default=%dx%d", m_operationMode, m_displayWidth,
++                 m_displayHeight, m_screenWidth, m_screenHeight);
 +
 +  if (!m_eglContext.CreateDisplay(EGL_DEFAULT_DISPLAY))
 +    return false;
@@ -3386,10 +6386,15 @@ index 0000000..e20e5b5
 +{
 +  if (m_bWindowCreated)
 +  {
-+    // The NWindow has one fixed size; nothing to recreate.
-+    return true;
++    // Same size: nothing to do; else a new EGL surface on the resized NWindow.
++    if (m_nWidth == m_displayWidth && m_nHeight == m_displayHeight)
++      return true;
++    return RecreateSurface(m_displayWidth, m_displayHeight);
 +  }
 +
++  // A fixed size (not nwindowSetModeDimensions with 0x0): Kodi renders its GUI and video into one
++  // GLES surface of the GUI resolution, so the buffers must have that size (<= 1920x1080); AM scales
++  // the layer to the TV output. MessagePump re-sizes it when the mode or the TV setting changes.
 +  nwindowSetDimensions(m_window, m_displayWidth, m_displayHeight);
 +  if (!m_eglContext.CreateSurface(reinterpret_cast<EGLNativeWindowType>(m_window)))
 +    return false;
@@ -3420,8 +6425,106 @@ index 0000000..e20e5b5
 +                                                 RESOLUTION_INFO& res,
 +                                                 bool blankOtherDisplays)
 +{
-+  CreateNewWindow("", true, res);
++  if (!CreateNewWindow("", true, res))
++    return false;
 +  CRenderSystemGLES::ResetRenderSystem(m_displayWidth, m_displayHeight);
++  return true;
++}
++
++void CWinSystemSwitch2GLESContext::QueryDisplaySize(int& outputW,
++                                                    int& outputH,
++                                                    int& guiW,
++                                                    int& guiH) const
++{
++  // AM's default display resolution for the current mode: 1920x1080 handheld, the TV output setting
++  // docked. Read only; nothing is changed (no appletUpdateDefaultDisplayResolution, no set:sys).
++  s32 w = 0, h = 0;
++  if (R_FAILED(appletGetDefaultDisplayResolution(&w, &h)) || w <= 0 || h <= 0)
++  {
++    w = 1920;
++    h = 1080;
++  }
++  outputW = w;
++  outputH = h;
++  // GUI cap, like GBM's videoscreen.limitguisize: never more than 1920x1080.
++  if (w > 1920 || h > 1080)
++  {
++    const float scale = std::min(1920.f / static_cast<float>(w), 1080.f / static_cast<float>(h));
++    w = static_cast<s32>(static_cast<float>(w) * scale + 0.5f);
++    h = static_cast<s32>(static_cast<float>(h) * scale + 0.5f);
++  }
++  guiW = w;
++  guiH = h;
++}
++
++// Called from MessagePump (the main/render thread) after appletMainLoop: on an operation-mode
++// message at once, otherwise at most every 2 s (the TV setting can change while docked).
++void CWinSystemSwitch2GLESContext::CheckDisplayChange()
++{
++  if (!m_bWindowCreated)
++    return;
++  const int mode = static_cast<int>(appletGetOperationMode());
++  const uint64_t nowNs = armTicksToNs(armGetSystemTick());
++  if (mode == m_operationMode && nowNs < m_nextDisplayPollNs)
++    return;
++  m_nextDisplayPollNs = nowNs + 2000000000ULL;
++
++  int outW, outH, guiW, guiH;
++  QueryDisplaySize(outW, outH, guiW, guiH);
++  if (mode == m_operationMode && outW == m_screenWidth && outH == m_screenHeight &&
++      guiW == m_displayWidth && guiH == m_displayHeight)
++    return;
++
++  Switch2DiagLog("display change mode=%d output=%dx%d window=%dx%d", mode, outW, outH, guiW, guiH);
++  CLog::Log(LOGINFO, "Switch2: display change mode={} output {}x{} window {}x{}", mode, outW, outH,
++            guiW, guiH);
++  m_operationMode = mode;
++  m_screenWidth = outW;
++  m_screenHeight = outH;
++  if (guiW == m_displayWidth && guiH == m_displayHeight)
++    return; // e.g. handheld <-> docked on a 1080p or 4K TV setting: same 1920x1080 surface
++
++  m_displayWidth = guiW;
++  m_displayHeight = guiH;
++  UpdateResolutions();
++  // Kodi -> SetFullScreen(RES_DESKTOP) -> CreateNewWindow -> RecreateSurface at the new size.
++  GetGfxContext().SetVideoResolution(RES_DESKTOP, true);
++}
++
++bool CWinSystemSwitch2GLESContext::RecreateSurface(int width, int height)
++{
++  {
++    std::unique_lock<CCriticalSection> lock(m_resourceSection);
++    for (IDispResource* resource : m_resources)
++      resource->OnLostDisplay();
++  }
++
++  // The NWindow cannot change size while buffers are registered: the EGL surface goes first.
++  m_eglContext.DestroySurface();
++  const Result rc = nwindowSetDimensions(m_window, width, height);
++  if (R_FAILED(rc))
++    CLog::Log(LOGERROR, "Switch2: nwindowSetDimensions({}x{}) failed 0x{:x}", width, height, rc);
++  if (!m_eglContext.CreateSurface(reinterpret_cast<EGLNativeWindowType>(m_window)) ||
++      !m_eglContext.BindContext())
++  {
++    Switch2DiagLog("egl surface recreate FAILED %dx%d", width, height);
++    return false;
++  }
++
++  EGLint sw = 0, sh = 0;
++  eglQuerySurface(m_eglContext.GetEGLDisplay(), m_eglContext.GetEGLSurface(), EGL_WIDTH, &sw);
++  eglQuerySurface(m_eglContext.GetEGLDisplay(), m_eglContext.GetEGLSurface(), EGL_HEIGHT, &sh);
++  Switch2DiagLog("egl surface %dx%d", sw, sh);
++
++  m_nWidth = width;
++  m_nHeight = height;
++  CRenderSystemGLES::ResetRenderSystem(width, height);
++
++  {
++    std::unique_lock<CCriticalSection> lock(m_resourceSection);
++    for (IDispResource* resource : m_resources)
++      resource->OnResetDisplay();
++  }
 +  return true;
 +}
 +
@@ -3429,6 +6532,9 @@ index 0000000..e20e5b5
 +{
 +  CWinSystemBase::UpdateResolutions();
 +
++  // iWidth/iHeight = iScreenWidth/iScreenHeight = the GUI/surface size (<= 1920x1080; AM scales the
++  // layer to the output). Not a split GUI/screen size: CBaseRenderer scales video rects by
++  // iScreenWidth/iWidth for a separate video plane, and here video is drawn into the GUI surface.
 +  RESOLUTION_INFO& desktop = CDisplaySettings::GetInstance().GetResolutionInfo(RES_DESKTOP);
 +  UpdateDesktopResolution(desktop, "Switch2", m_displayWidth, m_displayHeight, 60.0f, 0);
 +  CServiceBroker::GetWinSystem()->GetGfxContext().ResetOverscan(desktop);
@@ -3558,16 +6664,22 @@ index 0000000..e20e5b5
 +bool CWinSystemSwitch2GLESContext::MessagePump()
 +{
 +  HandleApplet();
++  CheckDisplayChange();
 +  PollPad();
 +  PollTouch();
 +  return true;
 +}
++
++std::unique_ptr<KODI::WINDOWING::IOSScreenSaver> CWinSystemSwitch2GLESContext::GetOSScreenSaverImpl()
++{
++  return std::make_unique<COSScreenSaverSwitch2>();
++}
 diff --git a/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.h b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.h
 new file mode 100644
-index 0000000..da226a2
+index 0000000..d40a2c1
 --- /dev/null
 +++ b/xbmc/windowing/switch2/WinSystemSwitch2GLESContext.h
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,102 @@
 +/*
 + *  Copyright (C) 2026 Team Kodi
 + *  This file is part of Kodi - https://kodi.tv
@@ -3609,6 +6721,8 @@ index 0000000..da226a2
 +  static std::unique_ptr<CWinSystemBase> CreateWinSystem();
 +
 +  const std::string GetName() override { return "switch2"; }
++  // Idle dimming / auto-sleep held off while Kodi inhibits the OS screen saver (OSScreenSaverSwitch2).
++  std::unique_ptr<KODI::WINDOWING::IOSScreenSaver> GetOSScreenSaverImpl() override;
 +  CRenderSystemBase* GetRenderSystem() override { return this; }
 +
 +  bool InitWindowSystem() override;
@@ -3637,11 +6751,22 @@ index 0000000..da226a2
 +  void PollTouch();
 +  void PushKey(uint32_t sym, bool down);
 +  void HandleApplet();
++  // Display size handling (rev 30): the console's output size for the current operation mode and
++  // the GUI/EGL surface size derived from it (capped at 1920x1080).
++  void QueryDisplaySize(int& outputW, int& outputH, int& guiW, int& guiH) const;
++  void CheckDisplayChange();
++  bool RecreateSurface(int width, int height);
 +
 +  CEGLContextUtils m_eglContext;
 +  NWindow* m_window = nullptr;
++  // GUI/EGL surface (and NWindow buffer) size, <= 1920x1080.
 +  int m_displayWidth = 1920;
 +  int m_displayHeight = 1080;
++  // Output size reported by AM for the current mode (e.g. 3840x2160 docked on a 4K TV setting).
++  int m_screenWidth = 1920;
++  int m_screenHeight = 1080;
++  int m_operationMode = -1;
++  uint64_t m_nextDisplayPollNs = 0;
 +
 +  PadState m_pad{};
 +  uint64_t m_heldMapped = 0;

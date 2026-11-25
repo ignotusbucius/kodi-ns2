@@ -1,0 +1,24 @@
+diff --git a/Modules/posixmodule.c b/Modules/posixmodule.c
+index 73cc700..95d67fc 100644
+--- a/Modules/posixmodule.c
++++ b/Modules/posixmodule.c
+@@ -11442,7 +11442,8 @@ os_WSTOPSIG_impl(PyObject *module, int status)
+ #endif /* HAVE_SYS_WAIT_H */
+ 
+ 
+-#if defined(HAVE_FSTATVFS) && defined(HAVE_SYS_STATVFS_H)
++#if (defined(HAVE_FSTATVFS) || defined(HAVE_STATVFS)) && defined(HAVE_SYS_STATVFS_H)
++/* (statvfs without fstatvfs: newlib/libsysbase on Switch 2 has only statvfs) */
+ #ifdef _SCO_DS
+ /* SCO OpenServer 5.0 and later requires _SVID3 before it reveals the
+    needed definitions in sys/statvfs.h */
+@@ -11500,7 +11501,9 @@ _pystatvfs_fromstructstatvfs(PyObject *module, struct statvfs st) {
+ 
+     return v;
+ }
++#endif
+ 
++#if defined(HAVE_FSTATVFS) && defined(HAVE_SYS_STATVFS_H)
+ 
+ /*[clinic input]
+ os.fstatvfs

@@ -1,0 +1,30 @@
+diff --git a/Python/bootstrap_hash.c b/Python/bootstrap_hash.c
+index 3a2a731..cad2027 100644
+--- a/Python/bootstrap_hash.c
++++ b/Python/bootstrap_hash.c
+@@ -21,6 +21,13 @@
+ #  endif
+ #endif
+ 
++#ifdef __SWITCH__
++/* Nintendo Switch 2 (libounce): newlib's getentropy() has no _getentropy_r
++   backend and there is no /dev/urandom. randomGet() is the kernel CSPRNG
++   (the same seed source as the port's OpenSSL patch). */
++extern void randomGet(void *buf, size_t len);
++#endif
++
+ #ifdef _Py_MEMORY_SANITIZER
+ #  include <sanitizer/msan_interface.h>
+ #endif
+@@ -490,6 +497,11 @@ pyurandom(void *buffer, Py_ssize_t size, int blocking, int raise)
+ 
+ #ifdef MS_WINDOWS
+     return win32_urandom((unsigned char *)buffer, size, raise);
++#elif defined(__SWITCH__)
++    (void)blocking;
++    (void)raise;
++    randomGet(buffer, (size_t)size);
++    return 0;
+ #else
+ 
+ #if defined(PY_GETRANDOM) || defined(PY_GETENTROPY)

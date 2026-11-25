@@ -1,0 +1,357 @@
+# REQUIRED-MODULES.txt - static (ast) import scan of every .py in addons-bundle/addons/
+# host probe: 3.14.8 (Kodi 21 upstream depends ship CPython 3.11; names below are stable 3.11-3.14)
+# label: hard = unconditional or function-level import; guarded = inside try/except or if-branch (fallback exists);
+#        test-only = only in tests/ files (never run by Kodi); optional-backend files (urllib3/contrib, html5lib lxml/genshi
+#        walkers, bs4 diagnose, requests/help, youtube kodion/debug, dateutil zoneinfo/rebuild + tz/win) count as guarded.
+# Root attribution: a module imported HARD by a dependency counts HARD for every root that requires that dependency
+#        non-optionally; via optional=true add-on deps it counts as guarded. Static scan: dynamic/exec imports are not seen.
+# Host-version artefacts in (b): _zstd/_hmac (3.14), _interpreters (3.13), _tokenize (3.12) do not exist in 3.11;
+#        a 3.11 build needs the 3.11 equivalents (tokenize/hmac are pure there).
+# Kodi API modules (provided by Kodi's embedded interpreter, not files): xbmc, xbmcaddon, xbmcgui, xbmcplugin, xbmcvfs
+
+## (a) pure-Python stdlib modules imported (C modules each pulls in on the host, transitively)
+__future__       C-deps: -                                        hard-by: 12 add-ons
+_strptime        C-deps: _collections,_datetime,_functools,_locale,_operator,_sre,_stat,errno,itertools hard-by: 2 add-ons; guarded/test-only: plugin.video.youtube
+argparse         C-deps: _collections,_functools,_operator,_sre,_stat,errno,itertools hard-by: 2 add-ons
+ast              C-deps: _ast                                     hard-by: 1 add-ons
+base64           C-deps: _struct,binascii                         hard-by: 7 add-ons; guarded/test-only: script.module.dateutil
+bisect           C-deps: _bisect                                  hard-by: 5 add-ons
+cProfile         C-deps: _lsprof                                  hard-by: 1 add-ons; guarded/test-only: plugin.video.youtube, script.module.beautifulsoup4
+calendar         C-deps: _collections,_datetime,_functools,_locale,_operator,itertools hard-by: 4 add-ons
+codecs           C-deps: -                                        hard-by: 8 add-ons
+collections      C-deps: _collections,_operator,itertools         hard-by: 13 add-ons; guarded/test-only: script.module.pysocks, script.module.pytz
+colorsys         C-deps: -                                        hard-by: 1 add-ons
+concurrent       C-deps: -                                        hard-by: 1 add-ons
+contextlib       C-deps: _collections,_functools,_operator,_stat,errno,itertools hard-by: 4 add-ons; guarded/test-only: script.module.dateutil
+copy             C-deps: itertools                                hard-by: 5 add-ons; guarded/test-only: script.module.dateutil
+copyreg          C-deps: -                                        hard-by: 1 add-ons
+csv              C-deps: _csv                                     hard-by: 1 add-ons
+ctypes           C-deps: _collections,_contextvars,_ctypes,_stat,_struct,errno,itertools hard-by: 0 add-ons; guarded/test-only: script.module.dateutil
+dataclasses      C-deps: _ast,_collections,_functools,_opcode,_operator,_sre,_stat,_tokenize,errno,itertools hard-by: 2 add-ons; guarded/test-only: script.module.urllib3
+datetime         C-deps: _datetime                                hard-by: 19 add-ons
+decimal          C-deps: _collections,_decimal,_operator,itertools hard-by: 3 add-ons
+difflib          C-deps: _collections,_heapq,_operator,itertools  hard-by: 0 add-ons; guarded/test-only: script.module.html5lib
+doctest          C-deps: _ast,_asyncio,_bisect,_bz2,_collections,_contextvars,_functools,_heapq,_interpreters,_json,_locale,_lzma,_opcode,_operator,_posixsubprocess,_random,_socket,_sre,_ssl,_stat,_string,_struct,_tokenize,_typing,_zstd,atexit,binascii,errno,fcntl,itertools,math,select,unicodedata,zlib hard-by: 0 add-ons; guarded/test-only: script.module.pytz
+email            C-deps: -                                        hard-by: 1 add-ons
+encodings        C-deps: -                                        hard-by: 1 add-ons
+enum             C-deps: -                                        hard-by: 2 add-ons
+fractions        C-deps: _collections,_functools,_operator,_sre,itertools,math hard-by: 0 add-ons; guarded/test-only: script.module.dateutil
+functools        C-deps: _collections,_functools,_operator,itertools hard-by: 13 add-ons
+glob             C-deps: _collections,_functools,_operator,_sre,_stat,errno,itertools hard-by: 0 add-ons; guarded/test-only: script.module.html5lib
+gzip             C-deps: _stat,_struct,errno,itertools,zlib       hard-by: 4 add-ons
+hashlib          C-deps: _blake2,_hashlib                         hard-by: 7 add-ons; guarded/test-only: plugin.video.youtube, script.module.inputstreamhelper
+heapq            C-deps: _heapq                                   hard-by: 1 add-ons
+hmac             C-deps: _hashlib,_hmac                           hard-by: 1 add-ons
+html             C-deps: _collections,_functools,_operator,_sre,itertools hard-by: 5 add-ons; guarded/test-only: plugin.video.dailymotion_com, plugin.video.youtube
+http             C-deps: -                                        hard-by: 2 add-ons; guarded/test-only: plugin.video.iplayerwww, plugin.video.youtube, script.module.pysocks
+importlib        C-deps: -                                        hard-by: 3 add-ons; guarded/test-only: script.module.backports.zoneinfo, script.module.certifi, script.module.six, script.module.urllib3
+inspect          C-deps: _ast,_collections,_functools,_opcode,_operator,_sre,_stat,_tokenize,errno,itertools hard-by: 2 add-ons; guarded/test-only: plugin.video.youtube
+io               C-deps: -                                        hard-by: 9 add-ons; guarded/test-only: script.module.beautifulsoup4, script.module.six
+ipaddress        C-deps: _collections,_functools,_operator,itertools hard-by: 1 add-ons
+json             C-deps: _collections,_functools,_json,_operator,_sre,itertools hard-by: 21 add-ons; guarded/test-only: script.module.html5lib, script.module.requests
+logging          C-deps: _ast,_collections,_contextvars,_functools,_opcode,_operator,_sre,_stat,_string,_tokenize,atexit,errno,itertools hard-by: 11 add-ons; guarded/test-only: script.module.dateutil
+mimetypes        C-deps: -                                        hard-by: 1 add-ons
+multiprocessing  C-deps: _collections,_contextvars,_functools,_operator,_pickle,_socket,_stat,_struct,array,errno,itertools hard-by: 0 add-ons; guarded/test-only: plugin.video.plutotv, plugin.video.youtube
+netrc            C-deps: _stat,errno                              hard-by: 0 add-ons; guarded/test-only: script.module.requests
+operator         C-deps: _operator                                hard-by: 6 add-ons
+optparse         C-deps: _collections,_functools,_locale,_operator,_stat,errno,itertools hard-by: 1 add-ons
+os               C-deps: _stat,errno                              hard-by: 21 add-ons; guarded/test-only: script.module.certifi, script.module.html5lib
+pickle           C-deps: _collections,_functools,_operator,_pickle,_struct,itertools hard-by: 6 add-ons; guarded/test-only: script.module.dateutil
+pkgutil          C-deps: _collections,_functools,_operator,_stat,errno,itertools hard-by: 2 add-ons
+platform         C-deps: _collections,_functools,_operator,_sre,_stat,errno,itertools hard-by: 2 add-ons; guarded/test-only: script.module.requests
+pprint           C-deps: _collections,_operator,itertools         hard-by: 1 add-ons; guarded/test-only: script.module.pytz
+pstats           C-deps: _ast,_collections,_functools,_opcode,_operator,_sre,_stat,_tokenize,errno,itertools hard-by: 1 add-ons; guarded/test-only: plugin.video.youtube, script.module.beautifulsoup4
+queue            C-deps: _collections,_contextvars,_heapq,_operator,_queue,_stat,errno,itertools hard-by: 1 add-ons
+random           C-deps: _bisect,_operator,_random,_stat,errno,itertools,math hard-by: 6 add-ons; guarded/test-only: script.module.beautifulsoup4
+re               C-deps: _collections,_functools,_operator,_sre,itertools hard-by: 29 add-ons
+shelve           C-deps: _collections,_functools,_operator,_pickle,_struct,itertools hard-by: 1 add-ons
+shutil           C-deps: _bz2,_collections,_functools,_lzma,_operator,_sre,_stat,_zstd,errno,itertools,zlib hard-by: 4 add-ons; guarded/test-only: script.module.dateutil
+socket           C-deps: _socket,_stat,errno                      hard-by: 8 add-ons
+socketserver     C-deps: _collections,_contextvars,_operator,_socket,_stat,errno,itertools,math,select hard-by: 0 add-ons; guarded/test-only: plugin.video.youtube
+sqlite3          C-deps: _collections,_contextvars,_datetime,_functools,_operator,_sqlite3,itertools hard-by: 5 add-ons
+ssl              C-deps: _collections,_contextvars,_operator,_socket,_ssl,_stat,_struct,binascii,errno,itertools hard-by: 6 add-ons; guarded/test-only: script.module.requests
+string           C-deps: _string                                  hard-by: 5 add-ons; guarded/test-only: plugin.video.redbull.tv, script.module.inputstreamhelper, service.iptv.manager
+struct           C-deps: _struct                                  hard-by: 6 add-ons; guarded/test-only: script.module.six
+subprocess       C-deps: _collections,_contextvars,_functools,_locale,_operator,_posixsubprocess,_stat,errno,fcntl,itertools,math,select hard-by: 1 add-ons; guarded/test-only: script.module.dateutil, script.module.tzlocal
+tarfile          C-deps: _bz2,_collections,_functools,_lzma,_operator,_sre,_stat,_struct,_zstd,errno,grp,itertools,pwd,zlib hard-by: 1 add-ons
+tempfile         C-deps: _bisect,_bz2,_collections,_contextvars,_functools,_lzma,_operator,_random,_sre,_stat,_zstd,errno,itertools,math,zlib hard-by: 1 add-ons; guarded/test-only: script.module.beautifulsoup4, script.module.dateutil
+textwrap         C-deps: _collections,_functools,_operator,_sre,itertools hard-by: 1 add-ons
+threading        C-deps: _collections,_contextvars,_stat,errno,itertools hard-by: 7 add-ons
+timeit           C-deps: gc,itertools                             hard-by: 3 add-ons
+traceback        C-deps: _ast,_collections,_contextvars,_functools,_opcode,_operator,_sre,_stat,_tokenize,errno,itertools hard-by: 5 add-ons; guarded/test-only: plugin.video.iplayerwww, script.module.jurialmunkey
+types            C-deps: -                                        hard-by: 4 add-ons; guarded/test-only: script.module.certifi
+typing           C-deps: _collections,_functools,_operator,_typing,itertools hard-by: 7 add-ons; guarded/test-only: script.module.certifi
+unittest         C-deps: _ast,_collections,_contextvars,_functools,_heapq,_opcode,_operator,_sre,_stat,_tokenize,errno,itertools hard-by: 0 add-ons; guarded/test-only: script.module.dateutil
+urllib           C-deps: -                                        hard-by: 14 add-ons; guarded/test-only: plugin.video.redbull.tv, plugin.video.youtube, script.module.pysocks, script.module.routing, script.module.webencodings, service.iptv.manager
+uuid             C-deps: _stat,_uuid,errno                        hard-by: 2 add-ons
+warnings         C-deps: _contextvars                             hard-by: 7 add-ons; guarded/test-only: script.module.backports.zoneinfo
+weakref          C-deps: itertools                                hard-by: 4 add-ons; guarded/test-only: script.module.html5lib
+winreg           C-deps: -                                        hard-by: 0 add-ons; guarded/test-only: script.module.requests, script.module.tzlocal
+xml              C-deps: -                                        hard-by: 6 add-ons
+zipfile          C-deps: _bz2,_collections,_contextvars,_functools,_lzma,_operator,_sre,_stat,_struct,_zstd,binascii,errno,fcntl,grp,itertools,pwd,zlib hard-by: 3 add-ons
+zoneinfo         C-deps: _collections,_contextvars,_datetime,_stat,_struct,_zoneinfo,errno,itertools hard-by: 0 add-ons; guarded/test-only: script.module.tzlocal
+
+## (b) C extension / builtin modules from the stdlib (direct imports + pulled in by (a))
+# For a no-dlopen static CPython these must all be compiled in (Modules/Setup.local *static*).
+# 'interpreter core' = loaded by `python3 -I -S -c pass` already: _codecs _imp _io _signal _thread _warnings _weakref builtins marshal posix sys time
+# format: module [has pure fallback?] : root add-ons needing it HARD | roots needing it only guarded
+_ast via ast,dataclasses,doctest,inspect,logging,pstats,traceback,unittest
+    HARD: arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_asyncio [fallback: asyncio] via doctest
+    HARD: -
+    guarded-only: iplayerwww
+_bisect [fallback: bisect] via bisect,doctest,random,tempfile
+    HARD: archive.org,arteplussept,iplayerwww,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_blake2 [fallback: hashlib(_hashlib provides)] via hashlib
+    HARD: archive.org,arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_bz2 [fallback: bz2 (only if used)] via doctest,shutil,tarfile,tempfile,zipfile
+    HARD: arteplussept,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_collections via _pickle,_strptime,argparse,calendar,collections,contextlib,ctypes,dataclasses,decimal,difflib,doctest,fractions,functools,glob,html,inspect,ipaddress,json,logging,multiprocessing,optparse,pickle,pkgutil,platform,pprint,pstats,queue,re,shelve,shutil,socketserver,sqlite3,ssl,subprocess,tarfile,tempfile,textwrap,threading,traceback,typing,unittest,zipfile,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_contextvars via ctypes,doctest,logging,multiprocessing,queue,socketserver,sqlite3,ssl,subprocess,tempfile,threading,traceback,unittest,warnings,zipfile,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_csv via csv
+    HARD: nasa
+_ctypes via ctypes
+    HARD: -
+    guarded-only: plutotv,redbull.tv
+_datetime [fallback: datetime(_pydatetime)] via _strptime,calendar,datetime,sqlite3,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_decimal [fallback: decimal(_pydecimal)] via decimal
+    HARD: redbull.tv,ted.talks
+    guarded-only: plutotv
+_functools via _pickle,_strptime,argparse,calendar,contextlib,dataclasses,doctest,fractions,functools,glob,html,inspect,ipaddress,json,logging,multiprocessing,optparse,pickle,pkgutil,platform,pstats,re,shelve,shutil,sqlite3,subprocess,tarfile,tempfile,textwrap,traceback,typing,unittest,zipfile
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_hashlib via hashlib,hmac
+    HARD: archive.org,arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_heapq [fallback: heapq] via difflib,doctest,heapq,queue,unittest
+    HARD: arteplussept,iplayerwww,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_hmac [fallback: hmac(_hashlib/_operator)] via hmac
+    HARD: arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_interpreters via doctest
+    HARD: -
+    guarded-only: iplayerwww
+_json [fallback: json] via doctest,json
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_locale via _strptime,calendar,doctest,optparse,subprocess
+    HARD: arteplussept,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_lsprof via cProfile
+    HARD: themoviedb.helper
+    guarded-only: youtube
+_lzma [fallback: lzma (only if used)] via doctest,shutil,tarfile,tempfile,zipfile
+    HARD: arteplussept,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_multiprocessing via direct
+    HARD: -
+    guarded-only: plutotv
+_opcode via dataclasses,doctest,inspect,logging,pstats,traceback,unittest
+    HARD: arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_operator via _pickle,_strptime,argparse,calendar,collections,contextlib,dataclasses,decimal,difflib,doctest,fractions,functools,glob,html,inspect,ipaddress,json,logging,multiprocessing,operator,optparse,pickle,pkgutil,platform,pprint,pstats,queue,random,re,shelve,shutil,socketserver,sqlite3,ssl,subprocess,tarfile,tempfile,textwrap,traceback,typing,unittest,zipfile
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_pickle [fallback: pickle(_pickle optional)] via direct,multiprocessing,pickle,shelve
+    HARD: archive.org,iplayerwww,nasa,ted.talks,themoviedb.helper,twitch
+    guarded-only: plutotv,redbull.tv,youtube
+_posixsubprocess via doctest,subprocess
+    HARD: plutotv
+    guarded-only: iplayerwww,redbull.tv,youtube
+_queue [fallback: queue] via queue
+    HARD: arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_random via doctest,random,tempfile
+    HARD: archive.org,arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+    guarded-only: redbull.tv
+_socket via doctest,multiprocessing,socket,socketserver,ssl
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_sqlite3 via sqlite3
+    HARD: archive.org,plutotv,themoviedb.helper,twitch,youtube
+_sre via _strptime,argparse,dataclasses,doctest,fractions,glob,html,inspect,json,logging,platform,pstats,re,shutil,tarfile,tempfile,textwrap,traceback,unittest,zipfile
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_ssl via doctest,ssl
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_stat via _strptime,argparse,contextlib,ctypes,dataclasses,doctest,glob,gzip,inspect,logging,multiprocessing,netrc,optparse,os,pkgutil,platform,pstats,queue,random,shutil,socket,socketserver,ssl,subprocess,tarfile,tempfile,threading,traceback,unittest,uuid,zipfile,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_string via doctest,logging,string
+    HARD: arteplussept,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_struct via base64,ctypes,doctest,gzip,multiprocessing,pickle,shelve,ssl,struct,tarfile,zipfile,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_tokenize via dataclasses,doctest,inspect,logging,pstats,traceback,unittest
+    HARD: arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_typing via doctest,typing
+    HARD: arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+_uuid [fallback: uuid] via uuid
+    HARD: plutotv,youtube
+_zoneinfo [fallback: zoneinfo] via zoneinfo
+    HARD: -
+    guarded-only: iplayerwww
+_zstd via doctest,shutil,tarfile,tempfile,zipfile
+    HARD: arteplussept,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+array via multiprocessing
+    HARD: -
+    guarded-only: plutotv,youtube
+atexit via direct,doctest,logging
+    HARD: arteplussept,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+binascii via base64,direct,doctest,ssl,zipfile
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+    guarded-only: redbull.tv
+errno via _strptime,argparse,contextlib,ctypes,dataclasses,direct,doctest,glob,gzip,inspect,logging,multiprocessing,netrc,optparse,os,pkgutil,platform,pstats,queue,random,shutil,socket,socketserver,ssl,subprocess,tarfile,tempfile,threading,traceback,unittest,uuid,zipfile,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+fcntl via doctest,subprocess,zipfile
+    HARD: arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+    guarded-only: redbull.tv
+gc via direct,timeit
+    HARD: themoviedb.helper,youtube
+    guarded-only: plutotv,redbull.tv
+grp via tarfile,zipfile
+    HARD: arteplussept,iplayerwww,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+itertools via _pickle,_strptime,argparse,calendar,collections,contextlib,copy,ctypes,dataclasses,decimal,difflib,direct,doctest,fractions,functools,glob,gzip,html,inspect,ipaddress,json,logging,multiprocessing,optparse,pickle,pkgutil,platform,pprint,pstats,queue,random,re,shelve,shutil,socketserver,sqlite3,ssl,subprocess,tarfile,tempfile,textwrap,threading,timeit,traceback,typing,unittest,weakref,zipfile,zoneinfo
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+math via direct,doctest,fractions,random,socketserver,subprocess,tempfile
+    HARD: archive.org,arteplussept,iplayerwww,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+pwd via tarfile,zipfile
+    HARD: arteplussept,iplayerwww,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+select via direct,doctest,socketserver,subprocess
+    HARD: arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+    guarded-only: redbull.tv
+unicodedata via direct,doctest
+    HARD: arteplussept,iplayerwww,plutotv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+zlib via direct,doctest,gzip,shutil,tarfile,tempfile,zipfile
+    HARD: archive.org,arteplussept,dailymotion_com,iplayerwww,nasa,plutotv,redbull.tv,ted.talks,themoviedb.helper,twitch,vimeo,youtube
+
+## (c) third-party modules provided by bundled script.module.* / add-on module libs
+AddonSignals         <- script.module.addon.signals   used by: plugin.video.themoviedb.helper(hard)
+backports            <- script.module.backports.zoneinfo   used by: script.module.tzlocal(guarded)
+bs4                  <- script.module.beautifulsoup4   used by: script.module.soupsieve(hard)
+certifi              <- script.module.certifi   used by: script.module.requests(hard)
+chardet              <- script.module.chardet   used by: script.module.beautifulsoup4(guarded), script.module.html5lib(guarded), script.module.requests(guarded)
+dateutil             <- script.module.dateutil   used by: service.iptv.manager(hard)
+html5lib             <- script.module.html5lib   used by: plugin.video.ted.talks(hard), script.module.beautifulsoup4(hard)
+idna                 <- script.module.idna   used by: script.module.requests(hard), script.module.urllib3(guarded)
+infotagger           <- script.module.infotagger   used by: plugin.video.themoviedb.helper(hard), script.module.jurialmunkey(hard)
+inputstreamhelper    <- script.module.inputstreamhelper   used by: plugin.video.plutotv(hard), plugin.video.youtube(guarded)
+iso8601              <- script.module.iso8601   used by: script.module.m3u8(guarded)
+jurialmunkey         <- script.module.jurialmunkey   used by: plugin.video.themoviedb.helper(hard)
+kodi_six             <- script.module.kodi-six   used by: plugin.video.dailymotion_com(hard), plugin.video.plutotv(hard), plugin.video.youtube(guarded)
+m3u8                 <- script.module.m3u8   used by: plugin.video.ted.talks(hard)
+pytz                 <- script.module.pytz   used by: plugin.video.iplayerwww(hard)
+requests             <- script.module.requests   used by: plugin.video.arteplussept(hard), plugin.video.iplayerwww(hard), plugin.video.plutotv(hard), plugin.video.ted.talks(hard), plugin.video.themoviedb.helper(hard), plugin.video.twitch(hard), plugin.video.vimeo(hard), script.module.jurialmunkey(guarded), script.module.python.twitch(hard)
+routing              <- script.module.routing   used by: plugin.video.plutotv(hard), plugin.video.redbull.tv(hard)
+simplecache          <- script.module.simplecache   used by: plugin.video.plutotv(hard)
+six                  <- script.module.six   used by: plugin.video.dailymotion_com(hard), plugin.video.plutotv(hard), script.module.dateutil(hard), script.module.html5lib(hard)
+socks                <- script.module.pysocks   used by: script.module.inputstreamhelper(guarded)
+soupsieve            <- script.module.soupsieve   used by: script.module.beautifulsoup4(guarded)
+twitch               <- script.module.python.twitch   used by: plugin.video.twitch(hard)
+tzlocal              <- script.module.tzlocal   used by: plugin.video.iplayerwww(guarded)
+urllib3              <- script.module.urllib3   used by: plugin.video.youtube(hard), script.module.requests(hard)
+webencodings         <- script.module.webencodings   used by: script.module.html5lib(hard)
+xbmcswift2           <- script.module.xbmcswift2   used by: plugin.video.nasa(hard)
+
+## (d) unresolved imports (not stdlib on host, not provided by any bundled add-on)
+BaseHTTPServer       [py2-name] plugin.video.youtube(guarded)
+OpenSSL              [optional 3rd-party] script.module.requests(guarded), script.module.urllib3(guarded)
+PIL                  [optional 3rd-party] plugin.video.themoviedb.helper(guarded)
+SocketServer         [py2-name] plugin.video.youtube(guarded)
+StringIO             [py2-name] plugin.video.youtube(guarded), script.module.six(guarded)
+UserDict             [py2-name] script.module.pytz(guarded)
+_winreg              [py2-name] script.module.tzlocal(guarded)
+brotli               [optional 3rd-party] script.module.urllib3(guarded)
+brotlicffi           [optional 3rd-party] script.module.urllib3(guarded)
+cPickle              [py2-name] plugin.video.youtube(guarded), script.module.xbmcswift2(guarded)
+cchardet             [optional 3rd-party] script.module.beautifulsoup4(guarded)
+charset_normalizer   [optional 3rd-party] script.module.beautifulsoup4(guarded), script.module.requests(guarded)
+cookielib            [py2-name] plugin.video.iplayerwww(guarded)
+cryptography         [optional 3rd-party] script.module.requests(guarded), script.module.urllib3(guarded)
+dummy_threading      [py2-name] script.module.requests(guarded)
+elementtree          [py2-name] plugin.video.ted.talks(guarded)
+freezegun            [optional 3rd-party] script.module.dateutil(test-only)
+h2                   [optional 3rd-party] script.module.urllib3(guarded)
+httplib              [py2-name] script.module.pysocks(guarded)
+hypothesis           [optional 3rd-party] script.module.dateutil(test-only)
+importlib_resources  [optional 3rd-party] script.module.backports.zoneinfo(guarded)
+js                   [optional 3rd-party] script.module.urllib3(guarded)
+lxml                 [optional 3rd-party] script.module.beautifulsoup4(guarded), script.module.html5lib(guarded)
+mock                 [optional 3rd-party] script.module.html5lib(test-only), script.module.routing(test-only)
+mockxbmc             [optional 3rd-party] script.module.xbmcswift2(guarded)
+pkg_resources        [optional 3rd-party] script.module.html5lib(test-only), script.module.pytz(guarded)
+pydevd               [optional 3rd-party] plugin.video.youtube(guarded)
+pyodide              [optional 3rd-party] script.module.urllib3(guarded)
+pytest               [optional 3rd-party] script.module.dateutil(test-only), script.module.html5lib(test-only), script.module.routing(test-only)
+pytest_expect        [optional 3rd-party] script.module.html5lib(test-only)
+sets                 [py2-name] script.module.pytz(guarded)
+simplejson           [optional 3rd-party] script.module.python.twitch(guarded), script.module.requests(guarded)
+typing_extensions    [optional 3rd-party] script.module.urllib3(guarded)
+urllib2              [py2-name] plugin.video.redbull.tv(guarded), script.module.pysocks(guarded)
+urlparse             [py2-name] plugin.video.youtube(guarded), script.module.routing(guarded), service.iptv.manager(guarded)
+win_inet_pton        [windows-only] script.module.pysocks(guarded)
+xbmcswift            [optional 3rd-party] script.module.xbmcswift2(guarded)
+zstandard            [optional 3rd-party] script.module.urllib3(guarded)
+
+## flags: subprocess / ctypes / multiprocessing / concurrent / os.system-style use (label in [])
+plugin.video.iplayerwww: concurrent[func]
+plugin.video.plutotv: _multiprocessing[try], multiprocessing[if], multiprocessing[try]
+plugin.video.youtube: multiprocessing[try]
+script.module.dateutil: ctypes[optional-backend], subprocess, subprocess[optional-backend]
+script.module.inputstreamhelper: subprocess[func]
+script.module.tzlocal: subprocess[if]
+
+## inputstream references in code (string match)
+plugin.video.arteplussept: adaptive
+plugin.video.iplayerwww: adaptive
+plugin.video.plutotv: adaptive, inputstreamhelper
+plugin.video.redbull.tv: adaptive
+plugin.video.twitch: adaptive
+plugin.video.youtube: adaptive, inputstreamhelper
+script.module.inputstreamhelper: adaptive, inputstreamhelper, rtmp
+
+## per root: inputstream.adaptive need (from addon.xml + code reading)
+plugin.video.youtube: hard <requires> inputstream.adaptive>=19.0.0 in addon.xml; code works without it: settings kodion.video.quality.isa=false + kodion.mpd.videos=false -> muxed progressive (in practice itag 18 / 360p) and HLS live via Kodi ffmpeg. Also runs a loopback HTTP server (http.server/socketserver) for its MPD proxy when ISA is on.
+plugin.video.twitch: optional - HLS; uses ISA only if the add-on is enabled (service/utils check), else plain ffmpeg HLS.
+plugin.video.vimeo: no - progressive/HLS URLs only.
+plugin.video.arteplussept: YES - hard <requires>, and play()/play_live() refuse to start unless Addons.GetAddonDetails says inputstream.adaptive is enabled.
+plugin.video.archive.org: no - direct files.
+plugin.video.nasa: no.
+plugin.video.ted.talks: no - mp4/HLS via m3u8 module.
+plugin.video.plutotv: optional - requires script.module.inputstreamhelper (pure python); uses ISA only when inputstreamhelper.Helper('hls').check_inputstream() passes, else plain HLS.
+plugin.video.dailymotion_com: no - HLS/mp4.
+plugin.video.iplayerwww: YES - hard <requires>; every stream is DASH (manifest_type mpd). Also UK geo-restricted.
+plugin.video.redbull.tv: optional-ish - no <requires>, but sets inputstream=inputstream.adaptive (HLS) unconditionally; Kodi should fall back to ffmpeg HLS when the add-on is absent (not measured).
+plugin.video.themoviedb.helper: no - metadata/player-router; needs script.module.pil (Kodi core ships a stub addon.xml only; PIL is imported guarded).
+
+## xbmc.python API version declared (Omega provides 3.0.1)
+plugin.video.archive.org: xbmc.python 3.0.0
+plugin.video.arteplussept: xbmc.python 3.0.1
+plugin.video.dailymotion_com: xbmc.python 3.0.0
+plugin.video.iplayerwww: xbmc.python 3.0.0
+plugin.video.nasa: xbmc.python 3.0.0
+plugin.video.plutotv: xbmc.python 3.0.0
+plugin.video.redbull.tv: xbmc.python 3.0.0
+plugin.video.ted.talks: xbmc.python 3.0.0
+plugin.video.themoviedb.helper: xbmc.python 3.0.1
+plugin.video.twitch: xbmc.python 3.0.1
+plugin.video.vimeo: xbmc.python 3.0.0
+plugin.video.youtube: xbmc.python 3.0.0
+script.module.addon.signals: xbmc.python 3.0.0
+script.module.backports.zoneinfo: xbmc.python 3.0.0
+script.module.beautifulsoup4: xbmc.python 3.0.0
+script.module.certifi: xbmc.python 3.0.0
+script.module.chardet: xbmc.python 3.0.0
+script.module.dateutil: xbmc.python 3.0.0
+script.module.html5lib: xbmc.python 3.0.0
+script.module.idna: xbmc.python 3.0.0
+script.module.infotagger: xbmc.python 3.0.1
+script.module.inputstreamhelper: xbmc.python 3.0.0
+script.module.iso8601: xbmc.python 3.0.0
+script.module.jurialmunkey: xbmc.python 3.0.1
+script.module.kodi-six: xbmc.python 3.0.0
+script.module.m3u8: xbmc.python 3.0.0
+script.module.pysocks: xbmc.python 3.0.0
+script.module.python.twitch: xbmc.python 3.0.1
+script.module.pytz: xbmc.python 3.0.0
+script.module.requests: xbmc.python 3.0.0
+script.module.routing: xbmc.python 3.0.0
+script.module.simplecache: xbmc.python 3.0.0
+script.module.six: xbmc.python 3.0.0
+script.module.soupsieve: xbmc.python 3.0.0
+script.module.tzdata: xbmc.python 3.0.0
+script.module.tzlocal: xbmc.python 3.0.0
+script.module.urllib3: xbmc.python 3.0.0
+script.module.webencodings: xbmc.python 3.0.0
+script.module.xbmcswift2: xbmc.python 3.0.0
+service.iptv.manager: xbmc.python 3.0.0

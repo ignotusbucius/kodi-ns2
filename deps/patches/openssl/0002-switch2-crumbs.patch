@@ -1,0 +1,349 @@
+diff --git a/crypto/core_algorithm.c b/crypto/core_algorithm.c
+index 2dc1ddf..5e054c0 100644
+--- a/crypto/core_algorithm.c
++++ b/crypto/core_algorithm.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include <openssl/core.h>
++#include "internal/switch2_crumb.h"
+ #include <openssl/core_dispatch.h>
+ #include "internal/core.h"
+ #include "internal/property.h"
+@@ -45,9 +46,13 @@ static int algorithm_do_map(OSSL_PROVIDER *provider, const OSSL_ALGORITHM *map,
+     struct algorithm_data_st *data = cbdata;
+     int ret = 0;
+ 
+-    if (!data->reserve_store(no_store, data->data))
++    S2CRUMB("algorithm_do_map:reserve_store", data->reserve_store, data->data);
++    if (!data->reserve_store(no_store, data->data)) {
++        S2CRUMB("algorithm_do_map:reserve_store failed", no_store, 0);
+         /* Error, bail out! */
+         return -1;
++    }
++    S2CRUMB("algorithm_do_map:pre", data->pre, cur_operation);
+ 
+     /* Do we fulfill pre-conditions? */
+     if (data->pre == NULL) {
+@@ -65,6 +70,7 @@ static int algorithm_do_map(OSSL_PROVIDER *provider, const OSSL_ALGORITHM *map,
+      * but do continue with the next.  This simply means that another thread
+      * got to it first.
+      */
++    S2CRUMB("algorithm_do_map:pre done", ret, map);
+     if (ret == 0) {
+         ret = 1;
+         goto end;
+@@ -73,11 +79,15 @@ static int algorithm_do_map(OSSL_PROVIDER *provider, const OSSL_ALGORITHM *map,
+     if (map != NULL) {
+         const OSSL_ALGORITHM *thismap;
+ 
+-        for (thismap = map; thismap->algorithm_names != NULL; thismap++)
++        for (thismap = map; thismap->algorithm_names != NULL; thismap++) {
++            S2CRUMB(thismap->algorithm_names, data->fn, thismap);
+             data->fn(provider, thismap, no_store, data->data);
++        }
++        S2CRUMB("algorithm_do_map:fn loop done", thismap - map, 0);
+     }
+ 
+     /* Do we fulfill post-conditions? */
++    S2CRUMB("algorithm_do_map:post", data->post, 0);
+     if (data->post == NULL) {
+         /* If there is no post-condition function, assume "yes" */
+         ret = 1;
+@@ -88,7 +98,9 @@ static int algorithm_do_map(OSSL_PROVIDER *provider, const OSSL_ALGORITHM *map,
+     }
+ 
+ end:
++    S2CRUMB("algorithm_do_map:unreserve_store", data->unreserve_store, ret);
+     data->unreserve_store(data->data);
++    S2CRUMB("algorithm_do_map:done", ret, 0);
+ 
+     return ret;
+ }
+@@ -117,10 +129,13 @@ static int algorithm_do_this(OSSL_PROVIDER *provider, void *cbdata)
+         const OSSL_ALGORITHM *map = NULL;
+         int ret = 0;
+ 
++        S2CRUMB("algorithm_do_this:query_operation", provider, cur_operation);
+         map = ossl_provider_query_operation(provider, cur_operation,
+             &no_store);
++        S2CRUMB("algorithm_do_this:query_operation ret", map, no_store);
+         ret = algorithm_do_map(provider, map, cur_operation, no_store, data);
+         ossl_provider_unquery_operation(provider, cur_operation, map);
++        S2CRUMB("algorithm_do_this:unquery done", ret, cur_operation);
+ 
+         if (ret < 0)
+             /* Hard error, bail out immediately! */
+diff --git a/crypto/core_fetch.c b/crypto/core_fetch.c
+index 128ddde..b94357a 100644
+--- a/crypto/core_fetch.c
++++ b/crypto/core_fetch.c
+@@ -14,6 +14,7 @@
+ #include "internal/core.h"
+ #include "internal/property.h"
+ #include "internal/provider.h"
++#include "internal/switch2_crumb.h"
+ 
+ struct construct_data_st {
+     OSSL_LIB_CTX *libctx;
+@@ -35,6 +36,7 @@ static int ossl_method_construct_reserve_store(int no_store, void *cbdata)
+ {
+     struct construct_data_st *data = cbdata;
+ 
++    S2CRUMB("method_construct_reserve_store", data->mcm, data->store);
+     if (is_temporary_method_store(no_store, data) && data->store == NULL) {
+         /*
+          * If we have been told not to store the method "permanently", we
+@@ -44,8 +46,10 @@ static int ossl_method_construct_reserve_store(int no_store, void *cbdata)
+          */
+         if ((data->store = data->mcm->get_tmp_store(data->mcm_data)) == NULL)
+             return 0;
++        S2CRUMB("method_construct_reserve_store:tmp store", data->store, 0);
+     }
+ 
++    S2CRUMB("method_construct_reserve_store:lock_store", data->mcm->lock_store, data->store);
+     return data->mcm->lock_store(data->store, data->mcm_data);
+ }
+ 
+@@ -53,6 +57,7 @@ static int ossl_method_construct_unreserve_store(void *cbdata)
+ {
+     struct construct_data_st *data = cbdata;
+ 
++    S2CRUMB("method_construct_unreserve_store", data->mcm->unlock_store, data->store);
+     return data->mcm->unlock_store(data->store, data->mcm_data);
+ }
+ 
+@@ -106,9 +111,13 @@ static void ossl_method_construct_this(OSSL_PROVIDER *provider,
+     struct construct_data_st *data = cbdata;
+     void *method = NULL;
+ 
++    S2CRUMB("method_construct_this:construct", data->mcm->construct, algo);
+     if ((method = data->mcm->construct(algo, provider, data->mcm_data))
+-        == NULL)
++        == NULL) {
++        S2CRUMB("method_construct_this:construct NULL", 0, 0);
+         return;
++    }
++    S2CRUMB("method_construct_this:put", data->mcm->put, method);
+ 
+     /*
+      * Note regarding putting the method in stores:
+@@ -125,7 +134,9 @@ static void ossl_method_construct_this(OSSL_PROVIDER *provider,
+         algo->property_definition, data->mcm_data);
+ 
+     /* refcnt-- because we're dropping the reference */
++    S2CRUMB("method_construct_this:destruct", data->mcm->destruct, method);
+     data->mcm->destruct(method, data->mcm_data);
++    S2CRUMB("method_construct_this:done", method, 0);
+ }
+ 
+ void *ossl_method_construct(OSSL_LIB_CTX *libctx, int operation_id,
+diff --git a/crypto/evp/digest.c b/crypto/evp/digest.c
+index c81cb5a..3b48a52 100644
+--- a/crypto/evp/digest.c
++++ b/crypto/evp/digest.c
+@@ -24,6 +24,7 @@
+ #include "internal/core.h"
+ #include "crypto/evp.h"
+ #include "evp_local.h"
++#include "internal/switch2_crumb.h"
+ 
+ static void cleanup_old_md_data(EVP_MD_CTX *ctx, int force)
+ {
+@@ -862,8 +863,10 @@ EVP_MD *evp_md_new(void)
+ {
+     EVP_MD *md = OPENSSL_zalloc(sizeof(*md));
+ 
++    S2CRUMB("evp_md_new:zalloc", md, sizeof(*md));
+     if (md != NULL) {
+         md->lock = CRYPTO_THREAD_lock_new();
++        S2CRUMB("evp_md_new:lock_new", md->lock, 0);
+         if (md->lock == NULL) {
+             OPENSSL_free(md);
+             return NULL;
+@@ -939,6 +942,7 @@ static void *evp_md_from_algorithm(int name_id,
+     EVP_MD *md = NULL;
+     int fncnt = 0;
+ 
++    S2CRUMB("evp_md_from_algorithm", name_id, algodef);
+     /* EVP_MD_fetch() will set the legacy NID if available */
+     if ((md = evp_md_new()) == NULL) {
+         ERR_raise(ERR_LIB_EVP, ERR_R_MALLOC_FAILURE);
+@@ -947,6 +951,7 @@ static void *evp_md_from_algorithm(int name_id,
+ 
+ #ifndef FIPS_MODULE
+     md->type = NID_undef;
++    S2CRUMB("evp_md_from_algorithm:names_do_all", prov, name_id);
+     if (!evp_names_do_all(prov, name_id, set_legacy_nid, &md->type)
+         || md->type == -1) {
+         ERR_raise(ERR_LIB_EVP, ERR_R_INTERNAL_ERROR);
+@@ -962,7 +967,9 @@ static void *evp_md_from_algorithm(int name_id,
+     }
+     md->description = algodef->algorithm_description;
+ 
++    S2CRUMB("evp_md_from_algorithm:dispatch", fns, md->type);
+     for (; fns->function_id != 0; fns++) {
++        S2CRUMB("evp_md_from_algorithm:function_id", fns->function_id, fns->function);
+         switch (fns->function_id) {
+         case OSSL_FUNC_DIGEST_NEWCTX:
+             if (md->newctx == NULL) {
+@@ -1042,14 +1049,18 @@ static void *evp_md_from_algorithm(int name_id,
+         return NULL;
+     }
+     md->prov = prov;
+-    if (prov != NULL)
++    if (prov != NULL) {
++        S2CRUMB("evp_md_from_algorithm:provider_up_ref", prov, fncnt);
+         ossl_provider_up_ref(prov);
++    }
+ 
++    S2CRUMB("evp_md_from_algorithm:cache_constants", md, 0);
+     if (!evp_md_cache_constants(md)) {
+         EVP_MD_free(md);
+         ERR_raise(ERR_LIB_EVP, EVP_R_CACHE_CONSTANTS_FAILED);
+         md = NULL;
+     }
++    S2CRUMB("evp_md_from_algorithm:done", md, 0);
+ 
+     return md;
+ }
+diff --git a/crypto/evp/evp_fetch.c b/crypto/evp/evp_fetch.c
+index 3b1bd0a..a1ae35c 100644
+--- a/crypto/evp/evp_fetch.c
++++ b/crypto/evp/evp_fetch.c
+@@ -17,6 +17,7 @@
+ #include "internal/core.h"
+ #include "internal/provider.h"
+ #include "internal/namemap.h"
++#include "internal/switch2_crumb.h"
+ #include "internal/property.h"
+ #include "crypto/evp.h" /* evp_local.h needs it */
+ #include "evp_local.h"
+@@ -168,9 +169,11 @@ static void *get_evp_method_from_store(void *store, const OSSL_PROVIDER **prov,
+         && (store = get_evp_method_store(methdata->libctx)) == NULL)
+         return NULL;
+ 
++    S2CRUMB("get_evp_method_from_store:store_fetch", store, meth_id);
+     if (!ossl_method_store_fetch(store, meth_id, methdata->propquery, prov,
+             &method))
+         return NULL;
++    S2CRUMB("get_evp_method_from_store:found", method, 0);
+     return method;
+ }
+ 
+@@ -206,6 +209,7 @@ static int put_evp_method_in_store(void *store, void *method,
+         && (store = get_evp_method_store(methdata->libctx)) == NULL)
+         return 0;
+ 
++    S2CRUMB("put_evp_method_in_store:store_add", store, meth_id);
+     return ossl_method_store_add(store, prov, meth_id, propdef, method,
+         methdata->refcnt_up_method,
+         methdata->destruct_method);
+@@ -229,13 +233,17 @@ static void *construct_evp_method(const OSSL_ALGORITHM *algodef,
+     OSSL_LIB_CTX *libctx = ossl_provider_libctx(prov);
+     OSSL_NAMEMAP *namemap = ossl_namemap_stored(libctx);
+     const char *names = algodef->algorithm_names;
+-    int name_id = ossl_namemap_add_names(namemap, 0, names, NAME_SEPARATOR);
++    int name_id;
+     void *method;
+ 
++    S2CRUMB("construct_evp_method:add_names", namemap, names);
++    name_id = ossl_namemap_add_names(namemap, 0, names, NAME_SEPARATOR);
+     if (name_id == 0)
+         return NULL;
+ 
++    S2CRUMB("construct_evp_method:method_from_algorithm", methdata->method_from_algorithm, name_id);
+     method = methdata->method_from_algorithm(name_id, algodef, prov);
++    S2CRUMB("construct_evp_method:method", method, 0);
+ 
+     /*
+      * Flag to indicate that there was actual construction errors.  This
+@@ -273,6 +281,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
+     void *method = NULL;
+     int unsupported = 0;
+ 
++    S2CRUMB("inner_evp_generic_fetch:store/namemap", store, namemap);
+     if (store == NULL || namemap == NULL) {
+         ERR_raise(ERR_LIB_EVP, ERR_R_PASSED_INVALID_ARGUMENT);
+         return NULL;
+@@ -320,6 +329,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
+     if (name_id == 0)
+         unsupported = 1;
+ 
++    S2CRUMB("inner_evp_generic_fetch:cache_get", name_id, meth_id);
+     if (meth_id == 0
+         || !ossl_method_store_cache_get(store, prov, meth_id, propq, &method)) {
+         OSSL_METHOD_CONSTRUCT_METHOD mcm = {
+@@ -340,10 +350,12 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
+         methdata->refcnt_up_method = up_ref_method;
+         methdata->destruct_method = free_method;
+         methdata->flag_construct_error_occurred = 0;
+-        if ((method = ossl_method_construct(methdata->libctx, operation_id,
+-                 &prov, 0 /* !force_cache */,
+-                 &mcm, methdata))
+-            != NULL) {
++        S2CRUMB("inner_evp_generic_fetch:method_construct", &mcm, methdata);
++        method = ossl_method_construct(methdata->libctx, operation_id,
++            &prov, 0 /* !force_cache */,
++            &mcm, methdata);
++        S2CRUMB("inner_evp_generic_fetch:method_construct ret", method, prov);
++        if (method != NULL) {
+             /*
+              * If construction did create a method for us, we know that
+              * there is a correct name_id and meth_id, since those have
+@@ -365,6 +377,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
+                 method = NULL;
+             } else {
+                 meth_id = evp_method_id(name_id, operation_id);
++                S2CRUMB("inner_evp_generic_fetch:cache_set", name_id, meth_id);
+                 if (meth_id != 0)
+                     ossl_method_store_cache_set(store, prov, meth_id, propq,
+                         method, up_ref_method, free_method);
+diff --git a/crypto/provider_core.c b/crypto/provider_core.c
+index 9adb4f6..3472222 100644
+--- a/crypto/provider_core.c
++++ b/crypto/provider_core.c
+@@ -29,6 +29,7 @@
+ #include "internal/bio.h"
+ #include "internal/core.h"
+ #include "provider_local.h"
++#include "internal/switch2_crumb.h"
+ #ifndef FIPS_MODULE
+ #include <openssl/self_test.h>
+ #endif
+@@ -491,8 +492,10 @@ int ossl_provider_up_ref(OSSL_PROVIDER *prov)
+ {
+     int ref = 0;
+ 
++    S2CRUMB("ossl_provider_up_ref", prov, prov != NULL ? prov->refcnt_lock : NULL);
+     if (CRYPTO_UP_REF(&prov->refcnt, &ref, prov->refcnt_lock) <= 0)
+         return 0;
++    S2CRUMB("ossl_provider_up_ref:ref", ref, prov->ischild);
+ 
+ #ifndef FIPS_MODULE
+     if (prov->ischild) {
+diff --git a/include/internal/switch2_crumb.h b/include/internal/switch2_crumb.h
+new file mode 100644
+index 0000000..2e38323
+--- /dev/null
++++ b/include/internal/switch2_crumb.h
+@@ -0,0 +1,19 @@
++/*
++ * Switch 2 (Kodi port) source breadcrumbs. Switch2OsslCrumb is a weak reference: Kodi defines it
++ * (xbmc/platform/switch2/OsslTrace.cpp, which logs only while its trace window is armed); in any
++ * other link it is NULL and S2CRUMB does nothing, so the library builds and links standalone.
++ */
++#ifndef OSSL_INTERNAL_SWITCH2_CRUMB_H
++# define OSSL_INTERNAL_SWITCH2_CRUMB_H
++# include <stdint.h>
++
++extern void Switch2OsslCrumb(const char *where, uintptr_t a, uintptr_t b)
++    __attribute__((weak));
++
++# define S2CRUMB(w, a, b) \
++    do { \
++        if (Switch2OsslCrumb) \
++            Switch2OsslCrumb((w), (uintptr_t)(a), (uintptr_t)(b)); \
++    } while (0)
++
++#endif

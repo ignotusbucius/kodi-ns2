@@ -1,0 +1,5 @@
+# Fetched sources, build trees and outputs; regenerate with ./build.sh all
+src/
+build/
+prefix/
+out/
