@@ -3,7 +3,8 @@
 #   ./build.sh hosttools   native TexturePacker + JsonSchemaBuilder + flatc  -> hosttools/bin
 #   ./build.sh deps        static libs the devkit lacks, CPython 3.11, groovy -> prefix/
 #   ./build.sh configure   cmake configure of xbmc/ for switch2 (SWITCH2_DIAG=ON: diagnostics build) -> build/
-#   ./build.sh build       compile + link kodi.elf
+#   ./build.sh usbfs2      build + stage the read-only USB library (usbfs2/, sha256 pinned) -> prefix/
+#   ./build.sh build       compile + link kodi.bin, then the usbfs2 post-link guard (usbfs2-guard.py)
 #   ./build.sh nro         elf2nro + data tree                              -> out/
 #   ./build.sh all
 set -euo pipefail
@@ -68,7 +69,30 @@ deps() {
   run ". /opt/devkitpro/switch2vars.sh; bash deps/build-deps.sh && bash deps/build-extra.sh"
 }
 
+# Read-only USB library (usbfs2/): attachment-bound paths, bounded media-readiness retries and 4 KiB transfers.
+# Built here on first use; the archive must match the pinned reviewed build (the build is reproducible).
+USBFS2_DIR="$HERE/usbfs2"
+USBFS2_LIB_SHA=fb8bf929b280c54e28b3bda1ae2399058ce90a4106dfdd41ce2a3bc3c632a6fb
+USBFS2_HDR_SHA=c2f46574122f53f377f2788360467263bd113c87fcd304e273cd9ffbb376b5a0
+usbfs2() {
+  [ -f "$USBFS2_DIR/build/libusbfs2.a" ] || run "make -C usbfs2 build/libusbfs2.a"
+  echo "$USBFS2_LIB_SHA  $USBFS2_DIR/build/libusbfs2.a" | sha256sum -c --status \
+    || { echo "usbfs2: $USBFS2_DIR/build/libusbfs2.a is not the pinned reviewed build"; exit 1; }
+  echo "$USBFS2_HDR_SHA  $USBFS2_DIR/include/usbfs2.h" | sha256sum -c --status \
+    || { echo "usbfs2: $USBFS2_DIR/include/usbfs2.h is not the pinned header"; exit 1; }
+  mkdir -p "$HERE/prefix/lib" "$HERE/prefix/include"
+  cmp -s "$USBFS2_DIR/build/libusbfs2.a" "$HERE/prefix/lib/libusbfs2.a" || cp -p "$USBFS2_DIR/build/libusbfs2.a" "$HERE/prefix/lib/"
+  cmp -s "$USBFS2_DIR/include/usbfs2.h" "$HERE/prefix/include/usbfs2.h" || cp -p "$USBFS2_DIR/include/usbfs2.h" "$HERE/prefix/include/"
+  echo "usbfs2: prefix/lib/libusbfs2.a ${USBFS2_LIB_SHA:0:16}.. + prefix/include/usbfs2.h staged"
+}
+# After every link: what was linked of usbfs2 is the reviewed code, and nothing denied is in kodi.bin.
+usbfs2_guard() {
+  python3 -I "$HERE/usbfs2-guard.py" "$HERE/$BUILD_DIR/kodi.bin" "$HERE/$BUILD_DIR/kodi.map" \
+    "$HERE/prefix/lib/libusbfs2.a" "$USBFS2_DIR/build" "$HERE/$BUILD_DIR/build.ninja"
+}
+
 configure() {
+  usbfs2
   run "set -e; cmake -S xbmc -B $BUILD_DIR -G Ninja \
       -DCMAKE_TOOLCHAIN_FILE=/k/switch2-kodi.cmake \
       -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
@@ -102,15 +126,20 @@ restore_prefix() {
   for d in $INTERNAL_PREFIX_DEPS; do rm -f "$HERE/build/build/$d/src/$d-stamp/$d-install" "$HERE/build/build/$d/src/$d-stamp/$d-done"; done
   run "cmake --build build --target $INTERNAL_PREFIX_DEPS >/dev/null && echo 'prefix: release copies of $INTERNAL_PREFIX_DEPS re-installed'"
 }
-build() { run "cmake --build $BUILD_DIR -j$JOBS -- -k 0 2>&1 | tee $BUILD_DIR-compile.log | grep -E 'error|FAILED' | head -80; tail -3 $BUILD_DIR-compile.log"; restore_prefix; }
+build() {
+  usbfs2
+  run "set -o pipefail; cmake --build $BUILD_DIR -j$JOBS -- -k 0 2>&1 | tee $BUILD_DIR-compile.log | grep -E 'error|FAILED' | head -80; tail -3 $BUILD_DIR-compile.log; grep -qE '^FAILED|ninja: build stopped' $BUILD_DIR-compile.log && exit 1 || true"
+  restore_prefix
+  usbfs2_guard
+}
 
 nro() { run "BUILD_DIR=$BUILD_DIR OUT_DIR=$OUT_DIR bash /k/package.sh"; }
 
 [ $# -eq 0 ] && set -- all
 for step in "$@"; do
   case "$step" in
-    hosttools|deps|pyjars|configure|build|nro) "$step" ;;
+    hosttools|deps|pyjars|usbfs2|configure|build|nro) "$step" ;;
     all) hosttools; deps; configure; build; nro ;;
-    *) echo "usage: $0 {hosttools|deps|pyjars|configure|build|nro|all}..."; exit 2 ;;
+    *) echo "usage: $0 {hosttools|deps|pyjars|usbfs2|configure|build|nro|all}..."; exit 2 ;;
   esac
 done

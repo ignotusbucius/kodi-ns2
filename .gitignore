@@ -2,7 +2,9 @@ xbmc/
 build/
 out/
 prefix/
-hosttools/
+hosttools/*
+!hosttools/check-net-select.sh
+!hosttools/tests/
 deps/src/
 deps/src-extra/
 deps/build/
@@ -13,3 +15,4 @@ out-diag/
 dist/
 addons-bundle/zips/
 addons-bundle/addons/
+usbfs2/build/

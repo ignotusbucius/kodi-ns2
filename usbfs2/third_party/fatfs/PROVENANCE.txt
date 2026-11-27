@@ -1,0 +1,21 @@
+FatFs R0.16 (patch 3 of 2026-07-09; ff.c's banner still reads "R0.16 w/patch 2"), by ChaN, http://elm-chan.org/fsw/ff/
+Fetched 2026-11-25 on the build PC (git clone, no code run) from the GitHub mirror https://github.com/abbrev/fatfs
+(a verbatim copy of ChaN's releases: "This is a copy of FatFs ... by ChaN"; commit history = upstream release tags),
+commit ab992fcf2926b8a1ee3f0a8f9cefb6584174100d ("Update copyright", 2026-07-09; parent dbd6192 "R0.16 patch 3").
+License: FatFs license (1-clause BSD style; GPL compatible), LICENSE.txt. Files copied unmodified from source/:
+ff.c ff.h ffunicode.c diskio.h 00history.txt; ffconf.h stored as ffconf.h.upstream (reference only, NOT used: the
+build uses homebrew/usbfs2/source/ffconf.h, READ-ONLY; the host-only image populator uses test/mkimg/ffconf.h).
+Not used: diskio.c / ffsystem.c of the mirror (usbfs2 has its own read-only source/diskio.c and source/ffsystem.c).
+Reviewed and NOT used: DarkMatterCore/libusbhsfs commit 3b897ed6a79c910aa3f13693f17b80afb802b3b5 (its FatFs is a
+read-write fork wired to f_write/f_mkdir/..., its USB layer is libnx usbHs*; see INTEGRATE.md).
+Lineage (reviewer-verified 2026-11-25 against ChaN's own ff16.zip, ff.c sha256 dbeae3d7...ec1ef1e as the reviewer
+recorded it): ff.h, diskio.h and ffunicode.c are identical to ff16.zip; ff.c = ff16.zip + ChaN's R0.16 patch 1 + patch 2,
+identical except one comment.
+sha256:
+ebe1f68592b3f51a9ee92dba97b5a0512fa61c48989b169fbe19e6071ffd6646  ff.c
+42920ae4d6080bfc2a72d92a9969b5e94eeaff070e5e71d90da9ab6d7d8e158e  ff.h
+86cd4710c0968f0335e631ad440f90f5d3e92aa10d9bac6981533a32fd8e87c2  ffunicode.c
+1c2b29f53e061c55d43b2e412c3a61320b2621bac7561a05e275514baa44785a  diskio.h
+2576183a3e1c2d2f4b3628a7ef93c2f937879698abdd6d554dd718e79062e079  LICENSE.txt
+f3645300ebcebcd7a7e0c35035133db697e325d0ad163a549b5ec943f6688883  00history.txt
+202a7321066873fb3fa8c6ca83eba2b5964a091c366962f87ebd86332652430a  ffconf.h.upstream

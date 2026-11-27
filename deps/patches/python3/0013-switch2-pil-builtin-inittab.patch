@@ -1,0 +1,40 @@
+Switch 2 (Kodi port) patch 0013: Pillow's C extensions as built-in modules of the PIL package.
+
+deps/build-deps.sh (python3) compiles Pillow 8.4.0's _imaging (zlib + libjpeg), _imagingft (FreeType),
+_imagingmath and _imagingmorph into libpython3.11.a (no dlopen on the console, so no .so files). This
+patch puts them in the inittab under their dotted names "PIL._imaging" etc. Setup.local cannot express
+that: makesetup derives the init function PyInit_<name> from the module name, so a dotted name gives no
+valid C identifier. In 3.11, BuiltinImporter.find_spec(fullname, path) (Lib/importlib/_bootstrap.py)
+tests only _imp.is_builtin(fullname) and ignores path, and BuiltinImporter is first on sys.meta_path, so
+"from . import _imaging" inside the PIL package (script.module.pil/lib/PIL) resolves to these entries;
+create_builtin() (Python/import.c) matches the full name against the inittab the same way.
+--- a/Modules/config.c.in
++++ b/Modules/config.c.in
+@@ -32,6 +32,13 @@
+ extern PyObject* _PyWarnings_Init(void);
+ extern PyObject* PyInit__string(void);
+ 
++/* Switch 2 (Kodi port): Pillow's C extensions, compiled into libpython3.11.a by
++   homebrew/kodi/deps/build-deps.sh (python3). Their package is script.module.pil. */
++extern PyObject* PyInit__imaging(void);
++extern PyObject* PyInit__imagingft(void);
++extern PyObject* PyInit__imagingmath(void);
++extern PyObject* PyInit__imagingmorph(void);
++
+ struct _inittab _PyImport_Inittab[] = {
+ 
+ /* -- ADDMODULE MARKER 2 -- */
+@@ -61,6 +68,13 @@
+     /* This lives in Objects/unicodeobject.c */
+     {"_string", PyInit__string},
+ 
++    /* Switch 2 (Kodi port): Pillow, under the dotted names its PIL package imports
++       ("from . import _imaging"); BuiltinImporter matches the full name. */
++    {"PIL._imaging", PyInit__imaging},
++    {"PIL._imagingft", PyInit__imagingft},
++    {"PIL._imagingmath", PyInit__imagingmath},
++    {"PIL._imagingmorph", PyInit__imagingmorph},
++
+     /* Sentinel */
+     {0, 0}
+ };

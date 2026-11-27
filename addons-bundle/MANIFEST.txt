@@ -3,6 +3,7 @@
 # (index sha256 matched addons.xml.gz?sha256). Each zip sha256 verified against <zip-url>?sha256 (mirrorbits).
 # Layout: addons/<id>/ = special://home/addons/<id>/ ; zips/ = original repo zips.
 # columns: id | version | kind | zip sha256 | size(bytes) | source URL | required-by
+# a trailing "| patched: <patch> sha256 <hash> ..." = addons/<id> carries that patch (patch -p1 in addons/); package.sh checks it is applied
 
 plugin.video.archive.org | 1.0.0 | root | 11eefbe2d8fe19487a8a895b606fd9344b337036abca15462881491b54ba8e05 | 797182 | https://mirrors.kodi.tv/addons/omega/plugin.video.archive.org/plugin.video.archive.org-1.0.0.zip | (root: chosen video add-on)
 plugin.video.arteplussept | 2.1.0 | root | 8b6578fcc02949314c349c1d15ffd437be7ee6fb197d11ff92a5f7253791904b | 1802517 | https://mirrors.kodi.tv/addons/omega/plugin.video.arteplussept/plugin.video.arteplussept-2.1.0.zip | (root: chosen video add-on)
@@ -15,7 +16,7 @@ plugin.video.ted.talks | 5.0.0 | root | 782180fbdb0e512858619b3c17cb162c62fdbd3d
 plugin.video.themoviedb.helper | 5.4.16 | root | 3e79b35ff103bf86cb99747dd092e22565af269d571beadab7ab40f86e9238dc | 4285272 | https://mirrors.kodi.tv/addons/omega/plugin.video.themoviedb.helper/plugin.video.themoviedb.helper-5.4.16.zip | (root: chosen video add-on)
 plugin.video.twitch | 3.0.2 | root | 2389e9b4c246ce5fedb948cb3ea1240fcc3290a07793e8b31c4af37e38de4718 | 596106 | https://mirrors.kodi.tv/addons/omega/plugin.video.twitch/plugin.video.twitch-3.0.2.zip | (root: chosen video add-on)
 plugin.video.vimeo | 6.0.4 | root | ddc3cdde19d8ad29ca293aeb4ea58d6e02549174c62e25efae1dfc8f23bdf11a | 98794 | https://mirrors.kodi.tv/addons/omega/plugin.video.vimeo/plugin.video.vimeo-6.0.4.zip | (root: chosen video add-on)
-plugin.video.youtube | 7.4.4 | root | d744e5ba2d2b50924a9fa5624f4d209c2be95b97ef1ad1682cafbed160fb428f | 1093649 | https://mirrors.kodi.tv/addons/omega/plugin.video.youtube/plugin.video.youtube-7.4.4.zip | (root: chosen video add-on)
+plugin.video.youtube | 7.4.4 | root | d744e5ba2d2b50924a9fa5624f4d209c2be95b97ef1ad1682cafbed160fb428f | 1093649 | https://mirrors.kodi.tv/addons/omega/plugin.video.youtube/plugin.video.youtube-7.4.4.zip | (root: chosen video add-on) | patched: patches/plugin.video.youtube-7.4.4-switch2-connect-address.patch sha256 553db368afbe59233bbfc291e3a43b3520c17ec58f3aa651dcc4dee19415a3dc (Switch 2 connect address: listen address instead of Kodi's external IP; findings 1541) - applied to addons/plugin.video.youtube, re-apply after a re-fetch (package.sh refuses an unpatched tree)
 resource.images.iplayerwww | 1.0.0 | dependency | af0ca3f7f3b70af9bedcbc5df12ebf36b29fadab3c4623b9ea1ab092a93e91ea | 644246 | https://mirrors.kodi.tv/addons/omega/resource.images.iplayerwww/resource.images.iplayerwww-1.0.0.zip | plugin.video.iplayerwww
 script.module.addon.signals | 0.0.6+matrix.1 | dependency | a41629f328429d08d79ef3c8b59c93d6f4c06b1a6e76806babd44f2457a9a1fb | 19835 | https://mirrors.kodi.tv/addons/omega/script.module.addon.signals/script.module.addon.signals-0.0.6+matrix.1.zip | plugin.video.themoviedb.helper
 script.module.backports.zoneinfo | 0.2.1 | dependency | e9f2a4ad3fb491c9165025b24cf36d0722044686e37ea3521e316eb13d77f8b9 | 24349 | https://mirrors.kodi.tv/addons/omega/script.module.backports.zoneinfo/script.module.backports.zoneinfo-0.2.1.zip | script.module.tzlocal

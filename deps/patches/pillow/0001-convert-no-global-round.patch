@@ -1,0 +1,20 @@
+Switch 2 (Kodi port) Pillow patch 0001: no global round() replacement in libImaging/Convert.c.
+
+Pillow 8.4.0 defines its own round(double) (floor(x + 0.5)) whenever round is not a macro: a fallback for
+old MSVC without C99 math. As a .so that copy stays inside _imaging; in the Switch 2 port Pillow is compiled
+into libpython3.11.a (deps/build-deps.sh, python3), which comes before libm on kodi.bin's link line, so
+pil_Convert.o would be pulled in to satisfy every round() call in Kodi, FFmpeg and CPython and replace
+libm's round() (which rounds halves away from zero and does not round 0.49999999999999994 up). On
+__SWITCH__ the definition is left out and Convert.c's three callers use newlib's round().
+--- a/src/libImaging/Convert.c
++++ b/src/libImaging/Convert.c
+@@ -43,7 +43,8 @@
+ #define L(rgb) ((INT32)(rgb)[0] * 299 + (INT32)(rgb)[1] * 587 + (INT32)(rgb)[2] * 114)
+ #define L24(rgb) ((rgb)[0] * 19595 + (rgb)[1] * 38470 + (rgb)[2] * 7471 + 0x8000)
+ 
+-#ifndef round
++/* Switch 2 (Kodi port): not on __SWITCH__ (newlib's libm has C99 round()); see the patch header. */
++#if !defined(round) && !defined(__SWITCH__)
+ double
+ round(double x) {
+     return floor(x + 0.5);

@@ -1,0 +1,84 @@
+--- a/sqlite3.c
++++ b/sqlite3.c
+@@ -44971,12 +44971,40 @@
+     fd = robust_open(zName, openFlags, openMode);
+     OSTRACE(("OPENX   %-3d %s 0%o\n", fd, zName, openFlags));
+     assert( !isExclusive || (openFlags & O_CREAT)!=0 );
++#if defined(__SWITCH__)
++    /* Switch 2 (Horizon fsdev): open() of a file that is still open for
++    ** writing fails with EIO for every access mode; it is never a permission
++    ** problem, so the read-only retry below can only succeed when the other
++    ** handle happens to close between the two open() calls, and then hands
++    ** back a read-only database (Kodi: "is read only", fatal). Retry the same
++    ** open for up to ~1 s instead (the holder is normally a handle another
++    ** thread is closing) and never fall back to read-only on EIO. */
++    if( fd<0 && errno==EIO ){
++      int nSlept = 0, us = 1000;
++      while( fd<0 && errno==EIO && nSlept<1000000 ){
++        unixSleep(0, us);
++        nSlept += us;
++        if( us<32000 ) us *= 2;
++        fd = robust_open(zName, openFlags, openMode);
++      }
++      {
++        int eSaved = errno;  /* the checks below read errno */
++        sqlite3_log(SQLITE_NOTICE, "switch2: open(%s) EIO, retried %d ms: %s",
++                    zName, nSlept/1000, fd>=0 ? "opened" : "gave up");
++        errno = eSaved;
++      }
++    }
++#endif
+     if( fd<0 ){
+       if( isNewJrnl && errno==EACCES && osAccess(zName, F_OK) ){
+         /* If unable to create a journal because the directory is not
+         ** writable, change the error code to indicate that. */
+         rc = SQLITE_READONLY_DIRECTORY;
+-      }else if( errno!=EISDIR && isReadWrite ){
++      }else if( errno!=EISDIR && isReadWrite
++#if defined(__SWITCH__)
++                && errno!=EIO
++#endif
++      ){
+         /* Failed to open the file for read/write access. Try read-only. */
+         UnixUnusedFd *pReadonly = 0;
+         flags &= ~(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE);
+@@ -73693,6 +73721,9 @@
+ */
+ SQLITE_PRIVATE int sqlite3BtreeClose(Btree *p){
+   BtShared *pBt = p->pBt;
++#if defined(__SWITCH__) && SQLITE_THREADSAFE && !defined(SQLITE_OMIT_SHARED_CACHE)
++  sqlite3_mutex *mutexOpen = 0;  /* Serialises the last close with opens */
++#endif
+ 
+   /* Close all cursors opened via this handle.  */
+   assert( sqlite3_mutex_held(p->db->mutex) );
+@@ -73723,6 +73754,19 @@
+   ** up the shared-btree.
+   */
+   assert( p->wantToLock==0 && p->locked==0 );
++#if defined(__SWITCH__) && SQLITE_THREADSAFE && !defined(SQLITE_OMIT_SHARED_CACHE)
++  /* Switch 2 (Horizon fsdev) refuses a second open() of a file that is open
++  ** for writing. sqlite3BtreeOpen() holds SQLITE_MUTEX_STATIC_OPEN while it
++  ** looks for a BtShared to share and, finding none, opens the file. Hold it
++  ** here as well from dropping the last reference until the file is closed:
++  ** a concurrent open then either finds this BtShared still listed or opens
++  ** a file that is already closed, never one that is half-way through its
++  ** close (that open failed with EIO and fell back to a read-only handle). */
++  if( p->sharable ){
++    mutexOpen = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_OPEN);
++    sqlite3_mutex_enter(mutexOpen);
++  }
++#endif
+   if( !p->sharable || removeFromSharingList(pBt) ){
+     /* The pBt is no longer on the sharing list, so we can access
+     ** it without having to hold the mutex.
+@@ -73738,6 +73782,9 @@
+     freeTempSpace(pBt);
+     sqlite3_free(pBt);
+   }
++#if defined(__SWITCH__) && SQLITE_THREADSAFE && !defined(SQLITE_OMIT_SHARED_CACHE)
++  if( mutexOpen ) sqlite3_mutex_leave(mutexOpen);
++#endif
+ 
+ #ifndef SQLITE_OMIT_SHARED_CACHE
+   assert( p->wantToLock==0 );

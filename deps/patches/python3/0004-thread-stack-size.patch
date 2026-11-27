@@ -1,18 +1,36 @@
 diff --git a/Python/thread_pthread.h b/Python/thread_pthread.h
-index ddc28c4..346eb4a 100644
 --- a/Python/thread_pthread.h
 +++ b/Python/thread_pthread.h
-@@ -67,6 +67,14 @@
+@@ -27,6 +27,14 @@
+ #   include <lwp.h>             /* _lwp_self() */
+ #endif
+ 
++/* Switch 2 (devkitA64 newlib): <sys/features.h> defines _POSIX_THREAD_ATTR_STACKSIZE
++   only for RTEMS/Cygwin, so without this every Python thread was created with
++   NULL attributes (Kodi's pthread_create wrapper then gives it 1 MiB) and
++   threading.stack_size() raised. libounce's pthread_create honours the
++   attribute's stack size (it must be a multiple of 4 KiB). */
++#if defined(__SWITCH__) && !defined(_POSIX_THREAD_ATTR_STACKSIZE)
++#define _POSIX_THREAD_ATTR_STACKSIZE 1
++#endif
+ /* The POSIX spec requires that use of pthread_attr_setstacksize
+    be conditional on _POSIX_THREAD_ATTR_STACKSIZE being defined. */
+ #ifdef _POSIX_THREAD_ATTR_STACKSIZE
+@@ -67,6 +75,18 @@
  #undef  THREAD_STACK_SIZE
  #define THREAD_STACK_SIZE       0x100000
  #endif
-+/* Switch 2 (libounce/newlib): a thread created with attributes but no stack
-+   size gets 128 KiB, which deep C recursion (re, json, pickle, ElementTree)
-+   overflows. Kodi's own default is 1 MiB (PosixCompat.cpp __wrap_pthread_create);
-+   Python threads get 2 MiB. threading.stack_size() can still change it. */
++/* Switch 2 (rev 35): 768 KiB for Python threads, below Kodi's 1 MiB default
++   (PosixCompat.cpp __wrap_pthread_create): add-ons that start a thread per item
++   (TMDb Helper, scrapers) hit thread-creation ENOMEM. Host 3.11.7 measurement
++   (x86-64, minimum stack that still finishes): ssl handshake, sqlite, re and
++   ElementTree 32 KiB; json/repr of ~1000-deep nesting 136-152 KiB. Pure-Python
++   recursion raises RecursionError; some C-mediated recursion (sorted key=...)
++   overflows ~150 deep at 768 KiB (as it did ~200 deep at 1 MiB, rev <= 34).
++   threading.stack_size() can still change it (multiples of 4 KiB). */
 +#if defined(__SWITCH__) && defined(THREAD_STACK_SIZE) && THREAD_STACK_SIZE == 0
 +#undef  THREAD_STACK_SIZE
-+#define THREAD_STACK_SIZE       0x200000
++#define THREAD_STACK_SIZE       0xC0000
 +#endif
  /* for safety, ensure a viable minimum stacksize */
  #define THREAD_STACK_MIN        0x8000  /* 32 KiB */

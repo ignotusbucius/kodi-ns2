@@ -24,4 +24,12 @@ while IFS='|' read -r id ver kind sha size url rest; do
   [ -f "addons/$id/addon.xml" ] || { echo "$zip did not unpack to addons/$id/" >&2; exit 1; }
   n=$((n + 1))
 done < MANIFEST.txt
+# Port patches ("| patched: <patch> sha256 <hash>" in MANIFEST.txt): check the hash, apply once.
+while IFS= read -r line; do
+  p=$(sed -n 's/.*| patched: \([^ ]*\) sha256 \([0-9a-f]\{64\}\).*/\1/p' <<<"$line")
+  h=$(sed -n 's/.*| patched: \([^ ]*\) sha256 \([0-9a-f]\{64\}\).*/\2/p' <<<"$line")
+  echo "$h  $p" | sha256sum -c --status || { echo "$p: sha256 is not $h" >&2; exit 1; }
+  patch -R -p1 --dry-run -s -f -d addons < "$p" >/dev/null 2>&1 || patch -p1 -s -d addons < "$p"
+  echo "patched: $p"
+done < <(grep -v '^#' MANIFEST.txt | grep '| patched: ')
 echo "add-ons ready: $n in $(pwd)/addons"

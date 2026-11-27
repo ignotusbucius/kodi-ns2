@@ -54,6 +54,7 @@ TARBALLS=(
   "libnfs|5.0.2|http://mirrors.kodi.tv/build-deps/sources/libnfs-5.0.2.tar.gz|637e56643b19da9fba98f06847788c4dad308b723156a64748041035dcdf9bd3"
   "libmicrohttpd|0.9.77|http://mirrors.kodi.tv/build-deps/sources/libmicrohttpd-0.9.77.tar.gz|9e7023a151120060d2806a6ea4c13ca9933ece4eacfc5c9464d20edddb76b0a0"
   "python3|3.11.7|https://www.python.org/ftp/python/3.11.7/Python-3.11.7.tar.xz|18e1aa7e66ff3a58423d59ed22815a6954e53342122c45df20c96877c062b9b7"
+  "pillow|8.4.0|https://files.pythonhosted.org/packages/7d/2a/2fc11b54e2742db06297f7fa7f420a0e3069fdcf0e4b57dfec33f0b08622/Pillow-8.4.0.tar.gz|b8e2f83c56e141920c39464b852de3719dfbfb6e3c99a2d8da0edf4fb33176ed"
 )
 ORDER=(libiconv openssl sqlite3 tinyxml libcdio dav1d ffmpeg python3 libnfs libmicrohttpd)
 
@@ -161,6 +162,13 @@ build_sqlite3() {
   local d; d="$(unpack sqlite3)"; cd "$d"
   # patches/sqlite3/0001-no-fchown.patch: no HAVE_FCHOWN on __SWITCH__.
   patch -p1 -i "$PATCHES/sqlite3/0001-no-fchown.patch"
+  # patches/sqlite3/0002-switch2-shared-cache-close-race.patch (rev 34, __SWITCH__ only): the FS
+  # refuses a second open() (EIO) of a file open for writing. sqlite3BtreeClose holds
+  # SQLITE_MUTEX_STATIC_OPEN from dropping a shared cache's last reference until its file is closed
+  # (a concurrent sqlite3BtreeOpen no longer misses the cache and opens a half-closed file);
+  # unixOpen retries an EIO open for ~1 s and never falls back to read-only on EIO (rev 33d crash
+  # "MyMusic83.db is read only").
+  patch -p1 -i "$PATCHES/sqlite3/0002-switch2-shared-cache-close-race.patch"
   # shellcheck disable=SC2086
   "$CC" $CPPFLAGS $CFLAGS "${SQLITE_DEFS[@]}" -c sqlite3.c -o sqlite3.o
   rm -f libsqlite3.a; "$AR" rcs libsqlite3.a sqlite3.o
@@ -313,7 +321,8 @@ build_ffmpeg() {
 #  0001 configure    accept --host=aarch64-*-elf as ac_sys_system=Switch2 (sys.platform "switch2");
 #  0002 urandom      os.urandom/hash seed from libounce randomGet() (no getentropy backend, no /dev/urandom);
 #  0003 pyport.h     UTF-8 locale + filesystem encoding (newlib's C locale is ASCII), as Android/VxWorks;
-#  0004 threads      2 MiB default stack for Python threads (libounce gives 128 KiB with an attr);
+#  0004 threads      _POSIX_THREAD_ATTR_STACKSIZE for newlib + 768 KiB default stack for Python threads (rev 35;
+#                    before, newlib lacked the macro: Python threads had NULL attrs = the 1 MiB wrapper default);
 #  0005 subprocess   switch2 has no processes: Popen raises OSError(ENOTSUP), like emscripten/wasi;
 #  0006 posix        os.getcwd() drops the "sdmc:" device prefix (posixpath needs "/..." absolute).
 #  0007 pyport.h     PY_SSIZE_T_MAX without SSIZE_MAX (newlib <limits.h> lacks it);
@@ -323,6 +332,9 @@ build_ffmpeg() {
 #                    Modules/_posixsubprocess_switch2.c: importable, fork_exec() -> OSError(ENOSYS);
 #  0011 _sqlite      bounded retry on SQLITE_LOCKED[_SHAREDCACHE] (Kodi's shared cache; busy_timeout
 #                    covers only SQLITE_BUSY): prepare and first step, 1->50 ms backoff, ~2 s (util.h).
+#  0012 fileutils    set_inheritable() is a no-op (ioctl(FIOCLEX) is socket-only on the console);
+#  0013 config.c.in  inittab entries "PIL._imaging", "PIL._imagingft", "PIL._imagingmath",
+#                    "PIL._imagingmorph" for Pillow's C extensions (build_pillow_objects, below).
 # Setup.local (patches/python3/) adds pwd (+compat) and the _posixsubprocess stub.
 # Not built (n/a below): no fork/exec (_posixshmem), no mmap, no tty (termios), no getrusage/rlimit
 # (resource), _uuid (the deps/uuid stub has no uuid_generate_time: a random UUID would be reported as
@@ -365,6 +377,89 @@ build_python3_host() {
         --disable-test-modules >/dev/null && make -j$JOBS >/dev/null && make install >/dev/null" )
   "$PY_HOST/bin/python$PY_VER" -c 'import sys, zlib, ssl, sqlite3; print("host", sys.version)'
 }
+# Pillow 8.4.0 for script.module.pil: Kodi 21's tools/depends/target/pythonmodule-pil version (the PyPI sdist,
+# its sha256 from PyPI's JSON). Pillow's setup.py is not run (it builds .so files and probes the build machine):
+# its C extensions are compiled here from the same source lists (_IMAGING/_LIB_IMAGING, read from setup.py
+# without executing it) with setup.py's defines for the libraries found (HAVE_LIBJPEG, HAVE_LIBZ,
+# PILLOW_VERSION) and Kodi's recipe's --disable-* set (no jpeg2000/tiff/webp/imagequant/xcb/lcms; no raqm,
+# so ImageFont uses the basic layout). Built: PIL._imaging (zlib + libjpeg), PIL._imagingft (FreeType),
+# PIL._imagingmath, PIL._imagingmorph. Not built: _webp (Kodi's recipe passes --disable-webp; the
+# portlibs' libwebp is 1.0.2 from 2019), _imagingcms (no lcms2 in
+# the portlibs), _imagingtk (no Tk). The objects (pil_*.o) are added to libpython3.11.a, whose inittab
+# (patch 0013) names them; the libraries are the devkit's portlibs (/opt/devkitpro/portlibs/switch):
+# libjpeg-turbo 2.1.2, zlib 1.3.1, FreeType 2.13.3 (which needs its png16/harfbuzz/bz2). Kodi links them
+# through xbmc/cmake/modules/FindPython.cmake (Kodi itself already links zlib/FreeType).
+# The pure-Python package goes to prefix/share/script.module.pil/lib/PIL (package.sh copies it).
+PIL_PORTLIBS="$DEVKITPRO/portlibs/switch"
+PIL_LINK_LIBS="-ljpeg -lfreetype -lharfbuzz -lfreetype -lpng16 -lbz2 -lz"
+build_pillow_objects() { # build_pillow_objects <python3 build dir> -> $BUILD/pillow/obj/pil_*.o + libpil.a
+  local py="$1" pil o s p n f m=() pids=() srcs=() common=() core=()
+  pil="$(unpack pillow)"; o="$pil/obj"; mkdir -p "$o"
+  # patches/pillow/ (each on __SWITCH__; Pillow's modules assume separate .so files):
+  #  0001 Convert.c   no global round(): it would replace libm's for all of kodi.bin (libpython3.11.a
+  #                   precedes libm on the link line);
+  #  0003 features.py pilinfo() prints "built-in" for Image.core (no __file__ on a built-in module);
+  #  0004 Quant.c, Access.c  internal failures return an error instead of exit(1) (which would end Kodi).
+  for p in "$PATCHES"/pillow/*.patch; do patch -d "$pil" -p1 -i "$p"; done
+  mapfile -t srcs < <("$PY_HOST/bin/python$PY_VER" -I - "$pil/setup.py" <<'PY'
+import ast, sys
+tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+lists = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body
+         if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)
+         and n.targets[0].id in ("_IMAGING", "_LIB_IMAGING")}
+print("src/_imaging.c")
+for s in lists["_IMAGING"]:
+    print("src/%s.c" % s)
+for s in lists["_LIB_IMAGING"]:
+    print("src/libImaging/%s.c" % s)
+PY
+)
+  # Guard against a silent parse failure (process substitution hides the exit code).
+  for f in src/_imaging.c src/decode.c src/libImaging/JpegDecode.c src/libImaging/ZipEncode.c src/libImaging/codec_fd.c; do
+    printf '%s\n' "${srcs[@]}" | grep -qx "$f" || { echo "setup.py source list lacks $f" >&2; return 1; }
+  done
+  srcs+=(src/_imagingft.c src/_imagingmath.c src/_imagingmorph.c)
+  # As a setuptools extension build: Python's own -fwrapv -DNDEBUG, no Py_BUILD_CORE. gnu17: GCC 15
+  # defaults to C23, which Pillow 8.4 (2021) predates.
+  # shellcheck disable=SC2206
+  common=($CPPFLAGS $CFLAGS -fno-omit-frame-pointer -fwrapv -DNDEBUG -std=gnu17
+    -I"$py/Include" -I"$py" -I"$pil/src/libImaging" -I"$PIL_PORTLIBS/include")
+  core=(-DHAVE_LIBJPEG -DHAVE_LIBZ "-DPILLOW_VERSION=\"$(field pillow 1)\"")
+  n=0
+  for s in "${srcs[@]}"; do
+    case "$s" in
+      src/_imagingft.c) m=(-I"$PIL_PORTLIBS/include/freetype2") ;;
+      src/_imagingmath.c|src/_imagingmorph.c) m=() ;;
+      *) m=("${core[@]}") ;;
+    esac
+    f="$o/pil_$(basename "$s" .c).o"
+    [ -e "$f" ] && { echo "duplicate object name $f" >&2; return 1; }
+    "$CC" "${common[@]}" "${m[@]}" -c "$pil/$s" -o "$f" & pids+=($!)
+    n=$((n + 1))
+    if [ ${#pids[@]} -ge "$JOBS" ]; then wait "${pids[0]}"; pids=("${pids[@]:1}"); fi
+  done
+  for p in "${pids[@]}"; do wait "$p"; done
+  [ "$(ls "$o"/pil_*.o | wc -l)" -eq "$n" ] || { echo "pillow: $n sources, fewer objects" >&2; return 1; }
+  rm -f "$o/libpil.a"; "$AR" rcs "$o/libpil.a" "$o"/pil_*.o
+  echo "pillow: $n objects"
+}
+# pil_symbol_guard <libpython3.11.a without Pillow>: no global that Pillow defines may also be defined by
+# CPython, newlib/libounce or a portlib (nor twice inside Pillow). In the static link the first archive
+# wins silently, and libpython3.11.a comes first: other callers would bind to Pillow's copy (round(),
+# before patch pillow/0001).
+pil_symbol_guard() {
+  local a dup
+  dup="$("$NM" -g --defined-only "$BUILD/pillow/obj/libpil.a" 2>/dev/null | awk 'NF==3 && $2 ~ /[TDBRCVG]/ {print $3}' | sort | uniq -d)"
+  [ -z "$dup" ] || { echo "Pillow globals defined twice inside Pillow: $dup" >&2; return 1; }
+  dup="$( { "$NM" -g --defined-only "$BUILD/pillow/obj/libpil.a" 2>/dev/null | awk 'NF==3 && $2 ~ /[TDBRCVWG]/ {print "P", $3}'
+            for a in "$1" "$DEVKITPRO"/devkitA64/aarch64-none-elf/lib/pic/libc.a \
+                     "$DEVKITPRO"/devkitA64/aarch64-none-elf/lib/pic/libm.a "$DEVKITPRO"/libounce/lib/*.a \
+                     "$PIL_PORTLIBS"/lib/*.a "$PREFIX"/lib/lib*.a; do
+              case "$a" in */libpython$PY_VER.a) [ "$a" = "$1" ] || continue ;; esac
+              "$NM" -g --defined-only "$a" 2>/dev/null | awk 'NF==3 && $2 ~ /[TDBRCVWG]/ {print "O", $3}'
+            done; } | awk '$1=="P"{p[$2]=1; next} ($2 in p) && !s[$2]++ {print $2}')"
+  [ -z "$dup" ] || { echo "Pillow globals also defined elsewhere: $dup" >&2; return 1; }
+}
 build_python3() {
   local tb d p m na=(); tb="$(fetch python3)"
   echo "$PY_SHA512  $tb" | sha512sum -c
@@ -381,10 +476,17 @@ build_python3() {
     --without-system-expat --without-system-libmpdec --without-readline --with-pymalloc \
     MODULE_BUILDTYPE=static "${PY_CACHE[@]}" "${na[@]}"
   make -j"$JOBS" libpython$PY_VER.a
+  # Pillow's C extensions into the same archive: patch 0013's inittab (config.o) names them, and Kodi
+  # links only the archive (an archive's members resolve each other in any order).
+  build_pillow_objects "$d"
+  pil_symbol_guard "$d/libpython$PY_VER.a"
+  "$AR" rs libpython$PY_VER.a "$BUILD"/pillow/obj/pil_*.o
   # Link test: the stock interpreter must link against newlib + libounce alone (not shipped). Kodi
   # links the same archive, so a symbol missing here is missing in kodi.bin too.
   # (LDFLAGS= : configure already copied them into CONFIGURE_LDFLAGS; twice repeats -specs/switch.ld.)
-  make -j"$JOBS" LDFLAGS= python
+  # 3.11 links python from $(LIBRARY_OBJS), not from the archive: Pillow's objects (libpil.a) and its
+  # libraries (PIL_LINK_LIBS, the portlibs Kodi links) go in through SYSLIBS.
+  make -j"$JOBS" LDFLAGS= SYSLIBS="$BUILD/pillow/obj/libpil.a $PIL_LINK_LIBS \$(LIBM) \$(LIBC)" python
   make pybuilddir.txt
   make inclinstall
   install -m644 libpython$PY_VER.a "$PREFIX/lib/"
@@ -405,12 +507,25 @@ build_python3() {
   # of every shipped .py with the host interpreter.
   "$PY_HOST/bin/python$PY_VER" -m compileall -q -j0 --invalidation-mode unchecked-hash \
     -s "$lib" -p "/switch/kodi/system/python/lib/python$PY_VER" "$lib"
+  # Pillow's pure-Python package for script.module.pil (package.sh puts it in the add-on's lib/, the
+  # library="lib" of its addon.xml), with unchecked-hash .pyc like the stdlib.
+  local pilpy="$PREFIX/share/script.module.pil/lib"
+  rm -rf "$PREFIX/share/script.module.pil"; mkdir -p "$pilpy"
+  ( cd "$BUILD/pillow/src" && tar --exclude='__pycache__' -cf - PIL ) | tar -C "$pilpy" -xf -
+  "$PY_HOST/bin/python$PY_VER" -m compileall -q -j0 --invalidation-mode unchecked-hash \
+    -s "$pilpy" -p "/switch/kodi/addons/script.module.pil/lib" "$pilpy"
+  [ -f "$pilpy/PIL/__pycache__/Image.cpython-311.pyc" ]
   "$NM" --defined-only "$PREFIX/lib/libpython$PY_VER.a" 2>/dev/null | grep -E ' T PyInit_' | awk '{print $3}' | sort >"$BUILD/python3-inittab.txt"
   cat "$BUILD/python3-inittab.txt"
   has_sym libpython$PY_VER.a Py_InitializeEx
   has_sym libpython$PY_VER.a PyInit__ssl
   has_sym libpython$PY_VER.a PyInit__socket
   has_sym libpython$PY_VER.a PyInit__sqlite3
+  has_sym libpython$PY_VER.a PyInit__imaging
+  has_sym libpython$PY_VER.a PyInit__imagingft
+  has_sym libpython$PY_VER.a PyInit__imagingmath
+  has_sym libpython$PY_VER.a PyInit__imagingmorph
+  has_sym libpython$PY_VER.a ImagingJpegDecode
 }
 
 # ---------------------------------------------------------------- libnfs

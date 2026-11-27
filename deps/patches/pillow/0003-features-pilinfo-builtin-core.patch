@@ -1,0 +1,18 @@
+Switch 2 (Kodi port) Pillow patch 0003: PIL.features.pilinfo() with a built-in Image.core.
+
+In the Switch 2 port PIL._imaging is a built-in module (inittab, CPython patch 0013), which has no
+__file__; pilinfo() printed os.path.dirname(Image.core.__file__) and so raised AttributeError. It now
+prints "built-in" for that line. (Patch 0002, for the dropped _webp module, no longer exists.)
+--- a/src/PIL/features.py
++++ b/src/PIL/features.py
+@@ -243,7 +243,9 @@
+         file=out,
+     )
+     print(
+-        f"Binary modules loaded from {os.path.dirname(Image.core.__file__)}",
++        # Switch 2 (Kodi port): Image.core is a built-in module there, without __file__.
++        f"Binary modules loaded from "
++        f"{os.path.dirname(getattr(Image.core, '__file__', None) or 'built-in/')}",
+         file=out,
+     )
+     print("-" * 68, file=out)

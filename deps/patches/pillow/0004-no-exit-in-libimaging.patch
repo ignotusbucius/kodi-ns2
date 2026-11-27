@@ -1,0 +1,60 @@
+Switch 2 (Kodi port) Pillow patch 0004: no exit(1) inside libImaging.
+
+Pillow is linked into kodi.bin (libpython3.11.a), so exit() there would end Kodi itself, not an add-on.
+  Quant.c  median_cut(): when split() fails (a failed malloc) it frees the heap and the box tree and
+           returns NULL; the caller (quantize) already handles NULL as an error, so Image.quantize()
+           raises instead of the process exiting. On that path some pixel-list nodes may leak.
+  Access.c add_item(): a hash collision in the fixed mode table (cannot happen with 8.4.0's modes, and
+           the table is built once in _imaging's module init) now leaves that mode without an accessor
+           (ImagingAccessNew returns NULL, as for any mode without one) instead of exit(1).
+--- a/src/libImaging/Access.c
++++ b/src/libImaging/Access.c
+@@ -37,7 +37,8 @@
+             i,
+             mode,
+             access_table[i].mode);
+-        exit(1);
++        /* Switch 2 (Kodi port): leave the mode without an accessor instead of ending the process. */
++        return NULL;
+     }
+     access_table[i].mode = mode;
+     return &access_table[i];
+@@ -190,9 +191,11 @@
+ #define ADD(mode_, line_, get_pixel_, put_pixel_) \
+     {                                             \
+         ImagingAccess access = add_item(mode_);   \
+-        access->line = line_;                     \
+-        access->get_pixel = get_pixel_;           \
+-        access->put_pixel = put_pixel_;           \
++        if (access) {                             \
++            access->line = line_;                 \
++            access->get_pixel = get_pixel_;       \
++            access->put_pixel = put_pixel_;       \
++        }                                         \
+     }
+ 
+     /* populate access table */
+--- a/src/libImaging/Quant.c
++++ b/src/libImaging/Quant.c
+@@ -640,6 +640,9 @@
+     return 1;
+ }
+ 
++static void
++free_box_tree(BoxNode *n);
++
+ static BoxNode *
+ median_cut(PixelList *hl[3], uint32_t imPixelCount, int nPixels) {
+     PixelList *tl[3];
+@@ -677,7 +680,10 @@
+ #ifndef NO_OUTPUT
+             printf("Oops, split failed...\n");
+ #endif
+-            exit(1);
++            /* Switch 2 (Kodi port): fail the quantize call instead of ending the process. */
++            ImagingQuantHeapFree(h);
++            free_box_tree(root);
++            return NULL;
+         }
+         ImagingQuantHeapAdd(h, (void *)(thisNode->l));
+         ImagingQuantHeapAdd(h, (void *)(thisNode->r));

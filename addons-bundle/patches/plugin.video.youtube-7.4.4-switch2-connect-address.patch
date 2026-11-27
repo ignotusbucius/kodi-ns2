@@ -1,0 +1,38 @@
+--- a/plugin.video.youtube/resources/lib/youtube_plugin/kodion/network/http_server.py
++++ b/plugin.video.youtube/resources/lib/youtube_plugin/kodion/network/http_server.py
+@@ -1124,6 +1124,11 @@
+         address_family = socket.AF_INET
+         broadcast_address = '<broadcast>'
+ 
++    # Switch 2 port: the console refuses the UDP connect() below (Errno 125). The server listens only on
++    # the configured address (127.0.0.1 by default), so Kodi's external IP would be refused: use the
++    # listen address when it is a specific one; only a wildcard falls back to Kodi's external IP.
++    fallback = listen_address if listen_address not in {'0.0.0.0', '::'} else xbmc.getIPAddress()
++
+     try:
+         sock = socket.socket(address_family, socket.SOCK_DGRAM)
+         if listen_address in {'0.0.0.0', '::'}:
+@@ -1136,20 +1141,20 @@
+                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+     except socket.error:
+         logging.exception('Failed to create socket')
+-        connect_address = xbmc.getIPAddress()
++        connect_address = fallback
+     else:
+         sock.settimeout(0)
+         try:
+             sock.connect((broadcast_address, 0))
+         except socket.error:
+             logging.exception('Failed to connect')
+-            connect_address = xbmc.getIPAddress()
++            connect_address = fallback
+         else:
+             try:
+                 connect_address = sock.getsockname()[0]
+             except socket.error:
+                 logging.exception('No address')
+-                connect_address = xbmc.getIPAddress()
++                connect_address = fallback
+         finally:
+             sock.close()
+ 
